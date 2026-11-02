@@ -1,5 +1,12 @@
 /node_modules/
-/package-lock.json
+/dist/
+/data/*.sqlite
+/data/*.sqlite-shm
+/data/*.sqlite-wal
+/data/site-assets/
+/.env
+/.env.*
+!/.env.example
 .idea
 .vscode
 .vs

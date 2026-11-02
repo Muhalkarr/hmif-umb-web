@@ -1,0 +1,104 @@
+/* ==========================================================================
+   HMIF UNIVERSITAS MAYASARI BAKTI - PRTS DESIGN SYSTEM TOKENS
+   ========================================================================== */
+
+@font-face {
+  font-family: 'BenderLight';
+  src: url('/fonts/BenderLight.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geometos';
+  src: url('/fonts/Geometos.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrainsMono';
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Color Palette */
+  --ak-cyan: #00e5ff;
+  --ak-cyan-deep: #0099b8;
+  --ak-cyan-glow: rgba(0, 229, 255, 0.45);
+  --ak-cyan-subtle: rgba(0, 229, 255, 0.12);
+
+  --ak-gold: #ffde00;
+  --ak-gold-amber: #e6a800;
+  --ak-gold-glow: rgba(255, 222, 0, 0.4);
+  --ak-gold-subtle: rgba(255, 222, 0, 0.12);
+
+  --ak-red: #ff3355;
+  --ak-red-glow: rgba(255, 51, 85, 0.4);
+  --ak-red-subtle: rgba(255, 51, 85, 0.15);
+
+  --ak-green: #00ff88;
+  --ak-green-glow: rgba(0, 255, 136, 0.35);
+
+  --ak-purple: #b388ff;
+  --ak-purple-subtle: rgba(179, 136, 255, 0.15);
+
+  /* Tactical Backgrounds */
+  --ak-bg-abyss: #07090e;
+  --ak-bg-dark: #0b0f17;
+  --ak-bg-panel: #111723;
+  --ak-bg-card: #151e2e;
+  --ak-bg-elevated: #1a2538;
+  --ak-bg-glass: rgba(17, 23, 35, 0.85);
+
+  /* Tactical Borders */
+  --ak-border: #1e2b40;
+  --ak-border-bright: #2d3e5a;
+  --ak-border-active: #00e5ff;
+
+  /* Typography Colors */
+  --ak-text-primary: #f0f6fc;
+  --ak-text-secondary: #9cb1ce;
+  --ak-text-dim: #5c6f8a;
+  --ak-text-accent: #ffde00;
+
+  /* Fonts */
+  --font-mono: 'JetBrainsMono', 'BenderLight', 'Consolas', monospace;
+  --font-title: 'Geometos', 'Rajdhani', 'Orbitron', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Tactical Shapes & Cuts */
+  --clip-cut-corner: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  --clip-corner-top-right: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+  --clip-corner-diagonal: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  --clip-badge: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  --clip-hex: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+
+  /* Patterns */
+  --hazard-stripes: repeating-linear-gradient(-45deg,
+      #ffde00,
+      #ffde00 10px,
+      #111622 10px,
+      #111622 20px);
+  --hazard-subtle: repeating-linear-gradient(-45deg,
+      rgba(255, 222, 0, 0.18),
+      rgba(255, 222, 0, 0.18) 8px,
+      transparent 8px,
+      transparent 16px);
+  --grid-pattern: linear-gradient(to right, rgba(0, 229, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 229, 255, 0.05) 1px, transparent 1px);
+
+  /* Shadows */
+  --shadow-panel: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--ak-border);
+  --shadow-cyan-glow: 0 0 16px rgba(0, 229, 255, 0.35);
+  --shadow-gold-glow: 0 0 16px rgba(255, 222, 0, 0.35);
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.2, 0, 0, 1);
+  --transition-normal: 0.25s cubic-bezier(0.2, 0, 0, 1);
+}

@@ -1,0 +1,467 @@
+/* ==========================================================================
+   HMIF UNIVERSITAS MAYASARI BAKTI - PRTS TERMINAL & HUD STYLES
+   ========================================================================== */
+
+/* PRTS Top Command Bar */
+.prts-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: rgba(11, 15, 23, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ak-border);
+  padding: 0 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.prts-topbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+  gap: 1.5rem;
+}
+
+/* Brand Identity */
+.prts-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.prts-brand-logo {
+  display: block;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  max-width: 48px;
+  max-height: 48px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  object-fit: contain;
+  clip-path: none !important;
+}
+
+.prts-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.prts-brand-title {
+  font-family: var(--font-title);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--ak-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.prts-brand-title span.highlight {
+  color: var(--ak-cyan);
+  text-shadow: 0 0 8px var(--ak-cyan-glow);
+}
+
+.prts-brand-sub {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-secondary);
+  letter-spacing: 0.08em;
+}
+
+/* Navigation Tabs */
+.prts-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.prts-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--ak-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  position: relative;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  clip-path: var(--clip-badge);
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+}
+
+.nav-link:hover {
+  color: var(--ak-cyan);
+  background: rgba(0, 229, 255, 0.06);
+  border-color: rgba(0, 229, 255, 0.3);
+}
+
+.nav-link.active {
+  color: #0b0f17;
+  background: var(--ak-cyan);
+  font-weight: 700;
+  border-color: var(--ak-cyan);
+  box-shadow: 0 0 14px var(--ak-cyan-glow);
+}
+
+.nav-link .nav-idx {
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+
+/* Header Utilities */
+.prts-utilities {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.prts-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  color: var(--ak-green);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  clip-path: var(--clip-badge);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ak-green);
+  box-shadow: 0 0 8px var(--ak-green);
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.btn-tactical {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(22, 30, 46, 0.8);
+  color: var(--ak-text-primary);
+  border: 1px solid var(--ak-border);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  clip-path: var(--clip-corner-top-right);
+  text-decoration: none;
+}
+
+.btn-tactical:hover {
+  background: var(--ak-bg-elevated);
+  border-color: var(--ak-cyan);
+  color: var(--ak-cyan);
+  box-shadow: 0 0 12px var(--ak-cyan-glow);
+}
+
+.btn-tactical.primary {
+  background: var(--ak-cyan);
+  color: #07090e;
+  font-weight: 700;
+  border-color: var(--ak-cyan);
+}
+
+.btn-tactical.primary:hover {
+  background: #33ebff;
+  box-shadow: 0 0 16px var(--ak-cyan-glow);
+}
+
+.btn-tactical.gold {
+  background: var(--ak-gold);
+  color: #07090e;
+  font-weight: 700;
+  border-color: var(--ak-gold);
+}
+
+.btn-tactical.gold:hover {
+  background: #ffe633;
+  box-shadow: 0 0 16px var(--ak-gold-glow);
+}
+
+.btn-tactical.danger {
+  background: rgba(255, 51, 85, 0.12);
+  color: var(--ak-red);
+  border-color: var(--ak-red);
+}
+
+.btn-tactical.danger:hover {
+  background: var(--ak-red);
+  color: #fff;
+  box-shadow: 0 0 16px var(--ak-red-glow);
+}
+
+/* Sound Effect Button */
+.sound-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  background: rgba(255, 222, 0, 0.08);
+  border: 1px solid rgba(255, 222, 0, 0.3);
+  color: var(--ak-gold);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+  clip-path: var(--clip-badge);
+  transition: all var(--transition-fast);
+}
+
+.sound-toggle-btn:hover {
+  background: rgba(255, 222, 0, 0.2);
+  box-shadow: 0 0 10px var(--ak-gold-glow);
+}
+
+/* Clock & Telemetry */
+.prts-clock {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ak-text-secondary);
+  background: rgba(14, 20, 31, 0.7);
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--ak-border);
+  border-radius: 2px;
+}
+
+/* Sub-header telemetry ribbon */
+.telemetry-ribbon {
+  background: #090c13;
+  border-bottom: 1px solid var(--ak-border);
+  padding: 0.35rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ak-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+}
+
+.ribbon-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.ribbon-left span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ribbon-left span strong {
+  color: var(--ak-cyan);
+}
+
+.ribbon-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.hazard-strip {
+  width: 48px;
+  height: 8px;
+  background: var(--hazard-stripes);
+  display: inline-block;
+}
+
+/* Tactical Section Header */
+.section-header {
+  margin-bottom: 2.5rem;
+  position: relative;
+}
+
+.section-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--ak-cyan-subtle);
+  border-left: 3px solid var(--ak-cyan);
+  color: var(--ak-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.6rem;
+  text-transform: uppercase;
+}
+
+.section-tag.gold {
+  background: var(--ak-gold-subtle);
+  border-left-color: var(--ak-gold);
+  color: var(--ak-gold);
+}
+
+.section-tag.red {
+  background: var(--ak-red-subtle);
+  border-left-color: var(--ak-red);
+  color: var(--ak-red);
+}
+
+.section-title {
+  font-family: var(--font-title);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ak-text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-title .title-sub {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: normal;
+  color: var(--ak-text-dim);
+  letter-spacing: 0.15em;
+}
+
+.section-desc {
+  color: var(--ak-text-secondary);
+  max-width: 760px;
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+/* Tactical Panel */
+.tactical-panel {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  box-shadow: var(--shadow-panel);
+  position: relative;
+  overflow: hidden;
+  clip-path: var(--clip-corner-top-right);
+}
+
+.tactical-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--ak-cyan);
+  opacity: 0.8;
+}
+
+.tactical-panel.gold::before {
+  background: var(--ak-gold);
+}
+
+.tactical-panel.red::before {
+  background: var(--ak-red);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: rgba(14, 20, 31, 0.7);
+  border-bottom: 1px solid var(--ak-border);
+}
+
+.panel-title {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ak-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.panel-title .badge {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.45rem;
+  background: var(--ak-cyan-subtle);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: var(--ak-cyan);
+  clip-path: var(--clip-badge);
+}
+
+.panel-body {
+  padding: 1.5rem;
+}
+
+/* Corner Bracket Accents */
+.corner-decor {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+.corner-decor.tl { top: 0; left: 0; border-top: 2px solid var(--ak-cyan); border-left: 2px solid var(--ak-cyan); }
+.corner-decor.tr { top: 0; right: 0; border-top: 2px solid var(--ak-cyan); border-right: 2px solid var(--ak-cyan); }
+.corner-decor.bl { bottom: 0; left: 0; border-bottom: 2px solid var(--ak-cyan); border-left: 2px solid var(--ak-cyan); }
+.corner-decor.br { bottom: 0; right: 0; border-bottom: 2px solid var(--ak-cyan); border-right: 2px solid var(--ak-cyan); }
+
+/* Scanline Effect */
+.scanlines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.25) 50%
+  );
+  background-size: 100% 4px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* Mobile Responsiveness for Topbar */
+@media (max-width: 900px) {
+  .prts-topbar-inner {
+    height: auto;
+    padding: 0.75rem 0;
+    flex-wrap: wrap;
+  }
+  .prts-nav {
+    order: 3;
+    width: 100%;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--ak-border);
+  }
+  .telemetry-ribbon {
+    display: none;
+  }
+}

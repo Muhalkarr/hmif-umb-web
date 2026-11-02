@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="id" data-poll-id="">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Voting | HMIF UMB PRTS</title>
+  <link rel="stylesheet" href="/styles/eVoting.css">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f8f9fa; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .header { padding: 20px 0; border-bottom: 1px solid #e0e0e0; }
+    .header h1 { margin: 0; color: #2c3e50; }
+    .header .meta { color: #7f8c8d; font-size: 0.9rem; margin-top: 8px; }
+
+    #candidates { margin: 30px 0; }
+    .candidate-card {
+      display: flex;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .candidate-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .candidate-img {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-bottom: 10px;
+    }
+    .candidate-info {
+      flex: 1;
+    }
+    .candidate-info h3 {
+      margin: 0 0 5px 0;
+      font-size: 1.1rem;
+    }
+    .vote-btn {
+      margin-top: 10px;
+      padding: 8px 15px;
+      border: none;
+      border-radius: 4px;
+      background: #2c3e50;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .vote-btn:disabled {
+      background: #7f8c8d;
+      cursor: not-allowed;
+    }
+    .vote-btn.voted {
+      background: #27ae60;
+    }
+    .vote-btn:not([disabled]) {
+      background: #2980b9;
+    }
+
+    .vote-btn:not([disabled]):hover {
+      background: #1a73e8;
+    }
+
+    #results {
+      margin-top: 30px;
+    }
+    .results-list {
+      list-style: none;
+      padding: 0;
+    }
+    .results-list li {
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .results-list strong {
+      color: #2c3e50;
+    }
+    .vote-receipt {
+      margin-top: 20px;
+      padding: 15px;
+      background: #e8f4fd;
+      border-radius: 6px;
+      border-left: 4px solid #2980b9;
+    }
+    .vote-receipt h4 {
+      margin-top: 0;
+      color: #2c3e50;
+    }
+
+    #workspace {
+      min-height: 80vh;
+      padding: 20px;
+    }
+
+    #workspace .poll-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    #workspace .poll-meta {
+      margin-top: 10px;
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    #workspace .poll-link {
+      display: inline-block;
+      margin-top: 10px;
+      color: #2980b9;
+      text-decoration: none;
+    }
+
+    #workspace .status-active {
+      color: #27ae60;
+      font-weight: 600;
+    }
+
+    #workspace .status-closed {
+      color: #c0392b;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>E-Voting</h1>
+      <div class="meta">Pemilihan Ketua Himpunan / Ketua Umum HMIF UMB</div>
+    </header>
+
+    <div id="workspace" class="container">
+      <!-- Default view: list of polls -->
+      <div id="poll-list-container"></div>
+    </div>
+  </div>
+</body>
+</html>

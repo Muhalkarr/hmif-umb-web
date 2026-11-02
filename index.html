@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07090e" />
+  <meta name="description"
+    content="Portal Resmi Himpunan Mahasiswa Informatika (HMIF) Universitas Mayasari Bakti dengan antarmuka taktis Arknights PRTS. Menampilkan struktur pengurus operator, program kerja, kalender akademik terpadu, doktrin kaderisasi AD/ART & GBHO, serta layanan aspirasi mahasiswa." />
+  <meta name="keywords"
+    content="HMIF, UMB, Universitas Mayasari Bakti, Teknik Informatika, Arknights, PRTS, Himpunan Mahasiswa, Tasikmalaya, AD/ART, GBHO, Kalender Pendidikan" />
+  <title>HMIF Universitas Mayasari Bakti // PRTS Tactical Terminal</title>
+
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+  <!-- Preconnect & Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap"
+    rel="stylesheet" />
+
+  <!-- Master Styles -->
+  <link rel="stylesheet" href="/src/styles/index.css" />
+  <link rel="stylesheet" href="/src/styles/eVoting.css" />
+</head>
+
+<body>
+  <!-- Ambient Scanlines & Canvas Dust Background -->
+  <div class="scanlines"></div>
+  <canvas id="canvas-dust"></canvas>
+  <div class="global-bg-wrapper"></div>
+
+  <div class="app-content">
+    <!-- PRTS Top Navigation Command Bar -->
+    <header class="prts-topbar">
+      <div class="prts-topbar-inner">
+        <a href="#dashboard" class="prts-brand">
+          <img src="/assets/hmif_umb_logo.jpg" alt="Logo HMIF UMB" class="prts-brand-logo" />
+          <div class="prts-brand-text">
+            <div class="prts-brand-title">
+              HMIF <span class="highlight">UMB</span>
+            </div>
+            <div class="prts-brand-sub">PRTS-CORE // SEC_04</div>
+          </div>
+        </a>
+
+        <!-- Right Utilities -->
+        <div class="prts-utilities">
+          <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" type="button" aria-label="Tutup navigasi" aria-controls="prts-sidebar" aria-expanded="true" title="Tutup navigasi">☰</button>
+          <button id="auth-action-btn" class="btn-tactical" type="button">AKSES KHUSUS</button>
+          <button id="logout-action-btn" class="btn-tactical" type="button" hidden>KELUAR</button>
+          <div id="prts-status-badge" class="prts-status-badge" title="Status koneksi ke server PRTS API (Port 3001)">
+            <span class="status-dot"></span>
+            <span id="prts-status-text">SYSTEM: ONLINE</span>
+          </div>
+          <button id="sound-toggle-btn" class="sound-toggle-btn" type="button" aria-pressed="true" aria-label="Matikan efek suara taktis" title="Nyalakan/Matikan Efek Suara Taktis">
+            <span>🔊</span> AUDIO: ON
+          </button>
+          <div id="prts-clock-display" class="prts-clock">--:--:-- WIB</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sub-header Telemetry Ribbon -->
+    <div class="telemetry-ribbon">
+      <div class="ribbon-left">
+        <span>LOC: <strong>UNIVERSITAS MAYASARI BAKTI [TASIKMALAYA]</strong></span>
+                <span id="clearance-ribbon">SECURITY: PUBLIC ACCESS</span>
+        <span>FACULTY: <strong>FTIK // PRODI TEKNIK INFORMATIKA</strong></span>
+      </div>
+      <div class="ribbon-right">
+        <span class="hazard-strip"></span>
+        <span>RHODES ISLAND // HMIF DIVISION // VER 4.2.0</span>
+      </div>
+    </div>
+
+    <aside id="prts-sidebar" class="prts-sidebar" aria-label="Navigasi situs">
+      <div class="sidebar-section-label">DIREKTORI SISTEM</div>
+      <nav class="prts-nav" aria-label="Navigasi Utama">
+        <button class="nav-link active" data-tab="dashboard"><span class="nav-idx">01</span><span>DASHBOARD</span></button>
+        <button class="nav-link" data-tab="vision"><span class="nav-idx">02</span><span>VISI & MISI</span></button>
+        <button class="nav-link" data-tab="knowledge"><span class="nav-idx">03</span><span>PUSAT AKADEMIK</span></button>
+        <button class="nav-link" data-tab="showcase"><span class="nav-idx">04</span><span>KARYA MAHASISWA</span></button>
+        <button class="nav-link" data-tab="career"><span class="nav-idx">05</span><span>ALUMNI & KARIER</span></button>
+        <button class="nav-link" data-tab="squad"><span class="nav-idx">06</span><span>SQUAD / PENGURUS</span></button>
+        <button class="nav-link" data-tab="cohort"><span class="nav-idx">07</span><span>BATALION ANGKATAN</span></button>
+        <button class="nav-link" data-tab="proker"><span class="nav-idx">08</span><span>PROKER & MISI</span></button>
+        <button class="nav-link" data-tab="voting"><span class="nav-idx">09</span><span>E-VOTING</span></button>
+        <button class="nav-link" data-tab="inventory"><span class="nav-idx">10</span><span>INVENTARIS</span></button>
+        <button class="nav-link" data-tab="calendar"><span class="nav-idx">11</span><span>KALENDER PENDIDIKAN</span></button>
+        <button class="nav-link" data-tab="doctrine"><span class="nav-idx">12</span><span>AD/ART & GBHO</span></button>
+        <button class="nav-link" data-tab="intel"><span class="nav-idx">13</span><span>BERITA & INTEL</span></button>
+        <button class="nav-link" data-tab="commlink"><span class="nav-idx">14</span><span>ASPIRASI & KONTAK</span></button>
+      </nav>
+      <div class="sidebar-section-label">DEPARTEMEN ORGANISASI</div>
+      <nav id="sidebar-departments" class="sidebar-departments" aria-label="Pilih departemen pada bagan"></nav>
+      <div class="sidebar-status"><span class="status-dot"></span><span id="sidebar-status-text">SYSTEM: ONLINE</span></div>
+    </aside>
+    <button id="sidebar-dismiss" class="sidebar-dismiss" type="button" aria-label="Tutup navigasi" tabindex="-1" hidden></button>
+
+    <!-- Main Content Stream -->
+    <main class="main-content">
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 01: HERO & DASHBOARD                                     -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-dashboard" class="hero-section">
+        <div class="hero-bg-overlay"></div>
+        <div class="hero-grid-mesh"></div>
+
+        <div class="hero-container">
+          <div class="hero-left">
+            <div class="hero-intel-tag">
+              <span>///</span> HMIF-UMB TERMINAL OPERATIONAL <span>///</span>
+            </div>
+
+            <h1 class="hero-title">
+              HIMPUNAN MAHASISWA<br />
+              <span class="glow-cyan">INFORMATIKA</span><br />
+              <span class="glow-gold">UNIVERSITAS MAYASARI BAKTI</span>
+            </h1>
+
+            <p class="hero-lead">
+              Pusat komando resmi organisasi kemahasiswaan Teknik Informatika Universitas Mayasari Bakti.
+              Mengintegrasikan kurikulum riset teknologi, kaderisasi berlandaskan AD/ART & GBHO, serta sinergi kalender
+              akademik terpadu dalam estetika taktis PRTS Rhodes Island.
+            </p>
+
+            <div class="hero-actions">
+              <button class="btn-tactical primary" onclick="window.prtsApp.switchTab('proker')">
+                <span>⚡</span> <span id="hero-action-proker">JELAJAHI PROGRAM KERJA</span>
+              </button>
+              <button class="btn-tactical gold" onclick="window.prtsApp.switchTab('calendar')">
+                <span>📅</span> <span id="hero-action-calendar">KALENDER PENDIDIKAN</span>
+              </button>
+              <button class="btn-tactical" onclick="window.prtsApp.switchTab('doctrine')">
+                <span>📜</span> <span id="hero-action-doctrine">PEDOMAN KADERISASI</span>
+              </button>
+            </div>
+
+            <!-- Key Metrics HUD -->
+            <div class="hero-stats-hud">
+              <div class="stat-box">
+                <div class="stat-meta">PERSONNEL // ACTIVE</div>
+                <div class="stat-value" id="hero-stat-active">185+</div>
+                <div class="stat-label" id="hero-stat-label-active">Kader Operasional</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-meta">STRUCTURE // DIVISION</div>
+                <div class="stat-value gold" id="hero-stat-divisions">10</div>
+                <div class="stat-label" id="hero-stat-label-divisions">Unit Taktis</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-meta">MISSIONS // ANNUAL</div>
+                <div class="stat-value" id="hero-stat-proker">14</div>
+                <div class="stat-label" id="hero-stat-label-proker">Program Aktif</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-meta">COMPLIANCE // AD/ART</div>
+                <div class="stat-value gold" id="hero-stat-compliance">100%</div>
+                <div class="stat-label" id="hero-stat-label-compliance">Kepatuhan Dokrin</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-right dashboard-profile-row">
+            <div class="prts-terminal-card">
+              <div class="terminal-header-bar">
+                <span id="terminal-id-label">PRTS ID // HMIF-UMB</span>
+                <span id="terminal-clearance-label" class="terminal-clearance-label">ORGANIZATION PROFILE</span>
+              </div>
+              <div class="terminal-emblem-wrap">
+                <img src="/assets/hmif_umb_logo.jpg" alt="Logo Emblem HMIF UMB" class="terminal-emblem" />
+              </div>
+              <div class="terminal-brief-body">
+                <div class="terminal-brief-row">
+                  <span class="label">LEMBAGA:</span>
+                  <span id="terminal-organization" class="value">HMIF FTIK UMB</span>
+                </div>
+                <div class="terminal-brief-row">
+                  <span class="label">KABINET:</span>
+                  <span id="terminal-cabinet" class="value cyan">VANGUARD INOVASI 2026/2027</span>
+                </div>
+                <div class="terminal-brief-row">
+                  <span class="label">KAHIM:</span>
+                  <span id="terminal-leader" class="value gold">Arkan Raihan Pratama</span>
+                </div>
+                <div class="terminal-brief-row">
+                  <span class="label">TAGLINE:</span>
+                  <span id="terminal-tagline" class="value">Logic with Integrity, Vanguard of Innovation</span>
+                </div>
+              </div>
+              <div class="sambutan-preview">
+                <p id="sambutan-quote-text">"Logic with Integrity. Dari koding kompetitif hingga riset AI—kami membangun tech leader masa depan."</p>
+                <div class="sambutan-author"><span>— Ketua Himpunan (VANGUARD-01)</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard-overview">
+          <section class="dashboard-panel dashboard-agenda-panel" aria-labelledby="dashboard-agenda-title">
+            <div class="dashboard-panel-heading">
+              <div><span class="section-tag red">CHRONO-RADAR</span><h2 id="dashboard-agenda-title">AGENDA TERDEKAT</h2></div>
+              <button class="dashboard-link" type="button" data-dashboard-route="calendar">KALENDER <span aria-hidden="true">→</span></button>
+            </div>
+            <div id="dashboard-agenda-list" class="dashboard-agenda-list"></div>
+            <div class="dashboard-deadlines-heading">PENDAFTARAN & TENGGAT SEGERA</div>
+            <div id="dashboard-deadline-list" class="dashboard-agenda-list" aria-live="polite"></div>
+          </section>
+          <section class="dashboard-panel dashboard-shortcuts-panel" aria-labelledby="dashboard-shortcuts-title">
+            <div class="dashboard-panel-heading">
+              <div><span class="section-tag gold">QUICK ACCESS</span><h2 id="dashboard-shortcuts-title">PINTASAN</h2></div>
+            </div>
+            <div class="dashboard-shortcuts">
+              <button type="button" data-dashboard-route="squad"><span>STRUKTUR ORGANISASI</span><strong>Telusuri BPH, departemen, dan divisi</strong><span aria-hidden="true">→</span></button>
+              <button type="button" data-dashboard-route="proker"><span>PROGRAM KERJA</span><strong>Pantau misi dan progres kegiatan</strong><span aria-hidden="true">→</span></button>
+              <button type="button" data-dashboard-route="doctrine"><span>DOKUMEN ORGANISASI</span><strong>Buka AD/ART dan panduan kaderisasi</strong><span aria-hidden="true">→</span></button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Visi & Misi Section -->
+      <section id="section-vision" class="content-section" style="padding-top: 2rem;">
+        <div class="section-header">
+          <div class="section-tag">STRATEGIC DIRECTIVE</div>
+          <h2 class="section-title">
+            VISI & MISI ORGANISASI <span class="title-sub">// FOUNDATION PRINCIPLES</span>
+          </h2>
+          <p class="section-desc">
+            Landasan filosofis dan pedoman operasional seluruh pengurus dan kader Himpunan Mahasiswa Informatika
+            Universitas Mayasari Bakti dalam mengabdi dan berkarya.
+          </p>
+        </div>
+
+        <div class="visi-misi-grid">
+          <div class="visi-card">
+            <div class="card-badge-header">
+              <span class="section-tag" style="margin: 0;">VISI HMIF UMB</span>
+            </div>
+            <div id="visi-content-text" class="visi-text">
+              <!-- Rendered via JS -->
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--ak-text-dim);">
+              PEDOMAN: Disahkan dalam Musyawarah Besar (MUBES) Mahasiswa Informatika UMB.
+            </div>
+          </div>
+
+          <div class="misi-card">
+            <div class="card-badge-header">
+              <span class="section-tag gold" style="margin: 0;">MISI STRATEGIS</span>
+            </div>
+            <ul id="misi-content-list" class="misi-list">
+              <!-- Rendered via JS -->
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-knowledge" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag cyan">ACADEMIC KNOWLEDGE BASE</div>
+          <h2 class="section-title">PUSAT AKADEMIK <span class="title-sub">// KNOWLEDGE BASE</span></h2>
+          <p class="section-desc">Referensi teknis dan jalur belajar publik yang dikurasi untuk mendukung perkuliahan Informatika.</p>
+        </div>
+        <div class="knowledge-toolbar" role="search" aria-label="Cari referensi akademik">
+          <label class="knowledge-search-field"><span class="form-label">CARI REFERENSI</span><input id="knowledge-search" class="form-input" type="search" placeholder="Judul, topik, atau kata kunci" /></label>
+          <label class="knowledge-filter-field"><span class="form-label">MATA KULIAH</span><select id="knowledge-course-filter" class="form-select"><option value="all">Semua mata kuliah</option></select></label>
+          <label class="knowledge-filter-field"><span class="form-label">SEMESTER</span><select id="knowledge-semester-filter" class="form-select"><option value="all">Semua semester</option></select></label>
+          <label class="knowledge-filter-field"><span class="form-label">DOSEN PENGAMPU</span><select id="knowledge-lecturer-filter" class="form-select"><option value="all">Semua dosen</option></select></label>
+          <label class="knowledge-filter-field"><span class="form-label">JENIS</span><select id="knowledge-kind-filter" class="form-select">
+            <option value="all">Semua jenis</option>
+            <option value="exam">Bank soal</option>
+            <option value="module">Modul</option>
+            <option value="cheatsheet">Cheat sheet</option>
+            <option value="reference">Dokumentasi</option>
+            <option value="learning_path">Learning path</option>
+            <option value="project">Repositori proyek</option>
+            <option value="faq">FAQ layanan mahasiswa</option>
+          </select></label>
+        </div>
+        <div id="knowledge-result-count" class="knowledge-result-count" role="status" aria-live="polite"></div>
+        <div id="knowledge-resources-grid" class="knowledge-resource-grid"></div>
+        <section class="academic-roadmap-section" aria-labelledby="academic-roadmaps-title">
+          <div class="section-tag gold">JALUR BELAJAR</div>
+          <h3 id="academic-roadmaps-title">Roadmap pembelajaran</h3>
+          <div id="academic-learning-paths" class="academic-learning-path-list"></div>
+        </section>
+        <section class="tutoring-clinic" aria-labelledby="tutoring-clinic-heading">
+          <div>
+            <span class="section-tag gold">PEER TUTORING</span>
+            <h3 id="tutoring-clinic-heading">KLINIK KODING</h3>
+            <p>Ajukan sesi bimbingan. Pengurus akan mencocokkan tutor dan mengirim jadwal atau tautan sesi secara privat.</p>
+          </div>
+          <button id="tutoring-login-button" class="btn-tactical" type="button">MASUK UNTUK MENGAJUKAN</button>
+          <form id="tutoring-request-form" class="tutoring-request-form" hidden>
+            <div class="admin-form-grid">
+              <label class="form-group"><span class="form-label">MATA KULIAH</span><input class="form-input" name="course" maxlength="120" required /></label>
+              <label class="form-group"><span class="form-label">TOPIK YANG DIBUTUHKAN</span><input class="form-input" name="topic" maxlength="180" required /></label>
+            </div>
+            <label class="form-group"><span class="form-label">BANTUAN YANG DIPERLUKAN</span><textarea class="form-textarea" name="message" maxlength="2000" required></textarea></label>
+            <fieldset class="tutoring-preferred-slots">
+              <legend class="form-label">PILIHAN SLOT WAKTU (WIB)</legend>
+              <div class="tutoring-preferred-slot" data-tutoring-preferred-slot>
+                <span class="tutoring-slot-label">PILIHAN 1 // WAJIB</span>
+                <label class="form-group"><span class="form-label">TANGGAL</span><input class="form-input" type="date" name="preferred_date" required /></label>
+                <label class="form-group"><span class="form-label">MULAI</span><input class="form-input" type="time" name="preferred_start" required /></label>
+                <label class="form-group"><span class="form-label">SELESAI</span><input class="form-input" type="time" name="preferred_end" required /></label>
+                <label class="form-group"><span class="form-label">MODE</span><select class="form-select" name="preferred_mode"><option value="any">Online atau tatap muka</option><option value="online">Online</option><option value="offline">Tatap muka</option></select></label>
+              </div>
+              <div class="tutoring-preferred-slot" data-tutoring-preferred-slot>
+                <span class="tutoring-slot-label">PILIHAN 2 // OPSIONAL</span>
+                <label class="form-group"><span class="form-label">TANGGAL</span><input class="form-input" type="date" name="preferred_date" /></label>
+                <label class="form-group"><span class="form-label">MULAI</span><input class="form-input" type="time" name="preferred_start" /></label>
+                <label class="form-group"><span class="form-label">SELESAI</span><input class="form-input" type="time" name="preferred_end" /></label>
+                <label class="form-group"><span class="form-label">MODE</span><select class="form-select" name="preferred_mode"><option value="any">Online atau tatap muka</option><option value="online">Online</option><option value="offline">Tatap muka</option></select></label>
+              </div>
+              <div class="tutoring-preferred-slot" data-tutoring-preferred-slot>
+                <span class="tutoring-slot-label">PILIHAN 3 // OPSIONAL</span>
+                <label class="form-group"><span class="form-label">TANGGAL</span><input class="form-input" type="date" name="preferred_date" /></label>
+                <label class="form-group"><span class="form-label">MULAI</span><input class="form-input" type="time" name="preferred_start" /></label>
+                <label class="form-group"><span class="form-label">SELESAI</span><input class="form-input" type="time" name="preferred_end" /></label>
+                <label class="form-group"><span class="form-label">MODE</span><select class="form-select" name="preferred_mode"><option value="any">Online atau tatap muka</option><option value="online">Online</option><option value="offline">Tatap muka</option></select></label>
+              </div>
+              <p class="form-help">Slot pilihan membantu pencocokan; jadwal final tetap dikonfirmasi pengurus.</p>
+            </fieldset>
+            <button class="btn-tactical primary" type="submit">KIRIM PERMINTAAN</button>
+            <p class="auth-feedback" data-tutoring-feedback role="status" aria-live="polite"></p>
+          </form>
+          <div id="tutoring-request-list" class="tutoring-request-list" aria-live="polite"></div>
+          <section id="tutoring-tutor-profile" class="tutoring-tutor-profile" hidden aria-labelledby="tutor-profile-heading">
+            <h4 id="tutor-profile-heading">PROFIL TUTOR SUKARELA</h4>
+            <p>Profil tersedia bagi anggota clearance 2+. Keahlian membantu pengurus menyarankan tutor; sesi dikonfirmasi manual.</p>
+            <form id="tutoring-profile-form">
+              <label class="form-group"><span class="form-label">KEAHLIAN (PISAHKAN DENGAN KOMA)</span><input class="form-input" name="expertise" maxlength="720" placeholder="Python, Struktur Data, React" required /></label>
+              <label class="form-group"><span class="form-label">SLOT MINGGUAN (SATU PER BARIS)</span><textarea class="form-textarea" name="availability" maxlength="1200" placeholder="Senin, 15:00, 17:00, online&#10;Rabu, 13:00, 15:00, any"></textarea></label>
+              <label class="form-group"><span class="form-label">BIO SINGKAT</span><textarea class="form-textarea" name="bio" maxlength="500"></textarea></label>
+              <label class="studio-toggle"><input type="checkbox" name="active" checked /> TAMPILKAN SEBAGAI TUTOR</label>
+              <button class="btn-tactical primary" type="submit">SIMPAN PROFIL TUTOR</button>
+              <p class="auth-feedback" data-tutor-profile-feedback role="status" aria-live="polite"></p>
+            </form>
+          </section>
+        </section>
+      </section>
+
+      <section id="section-showcase" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag cyan">STUDENT PROJECT SHOWCASE</div>
+          <h2 class="section-title">KARYA MAHASISWA <span class="title-sub">// PROJECT HUB</span></h2>
+          <p class="section-desc">Proyek dan riset yang dipublikasikan dengan persetujuan pemilik karya.</p>
+        </div>
+        <div id="showcase-projects" class="portal-record-grid" aria-live="polite"></div>
+        <section class="portfolio-subsection" aria-labelledby="tech-journal-title">
+          <div class="section-header">
+            <div class="section-tag gold">E-JOURNAL // TECH BLOG</div>
+            <h3 id="tech-journal-title">CATATAN TEKNIS & RISET</h3>
+            <p>Artikel arsitektur komputasi, tutorial, eksperimen, dan ulasan teknologi yang melewati peer review.</p>
+          </div>
+          <div id="tech-articles" class="portal-record-grid" aria-live="polite"></div>
+        </section>
+        <section class="portfolio-subsection" aria-labelledby="project-call-title">
+          <div class="section-header">
+            <div class="section-tag cyan">OPEN PROJECT // TEAM FINDER</div>
+            <h3 id="project-call-title">CARI REKAN TIM</h3>
+            <p>Temukan peran yang dibutuhkan untuk lomba, proyek, maupun riset mahasiswa.</p>
+          </div>
+          <div id="project-call-board" class="portal-record-grid" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="section-career" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag gold">ALUMNI NETWORK // OPPORTUNITIES</div>
+          <h2 class="section-title">JEJARING ALUMNI & KARIER <span class="title-sub">// CAREER HUB</span></h2>
+          <p class="section-desc">Profil alumni yang bersedia ditampilkan dan kesempatan kerja atau magang terkurasi.</p>
+        </div>
+        <div class="career-hub-grid">
+          <section aria-labelledby="alumni-directory-title">
+            <h3 id="alumni-directory-title">DIREKTORI ALUMNI & MENTOR</h3>
+            <section class="alumni-distribution" aria-labelledby="alumni-distribution-title">
+              <h4 id="alumni-distribution-title">PETA SEBARAN // PROVINSI DOMISILI</h4>
+              <p>Agregasi lokasi berdasarkan provinsi yang dicantumkan alumni; tidak menebak lokasi dari kota.</p>
+              <div id="alumni-distribution-map" class="alumni-distribution-map" aria-live="polite"></div>
+            </section>
+            <div id="alumni-directory" class="portal-record-grid" aria-live="polite"></div>
+          </section>
+          <section aria-labelledby="career-opportunities-title">
+            <h3 id="career-opportunities-title">LOWONGAN & MAGANG</h3>
+            <label class="form-group career-specialization-filter"><span class="form-label">FILTER BIDANG</span>
+              <select id="career-specialization-filter" class="form-select" aria-label="Filter lowongan berdasarkan spesialisasi">
+                <option value="">Semua spesialisasi</option>
+                <option>Full-stack</option><option>AI</option><option>Mobile</option><option>Cybersecurity</option><option>IoT</option><option>Data</option>
+              </select>
+            </label>
+            <p class="auth-feedback" id="career-filter-feedback" role="status"></p>
+            <div id="career-opportunities" class="portal-record-grid" aria-live="polite"></div>
+          </section>
+        </div>
+        <section class="career-mentorship-hub" aria-labelledby="career-mentorship-title">
+          <div class="section-header">
+            <div class="section-tag cyan">MENTORSHIP // MOCK INTERVIEW</div>
+            <h3 id="career-mentorship-title">SESI SATU LAWAN SATU</h3>
+            <p>Ajukan waktu untuk simulasi technical interview, review CV/LinkedIn, atau code review.</p>
+          </div>
+          <div id="career-mentorship-requests" class="career-mentorship-requests" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 02: OPERATOR SQUAD (STRUKTUR ORGANISASI)                 -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-squad" class="content-section">
+        <div class="section-header">
+          <div class="section-tag gold">ORGANIZATION CHART // OPERATOR ROSTER</div>
+          <h2 class="section-title">
+            HIERARKI PENGURUS HMIF <span class="title-sub">// ORGANIZATION</span>
+          </h2>
+          <p class="section-desc">
+            Bagan kepengurusan HMIF dari Badan Pengurus Harian (BPH), departemen, hingga divisi operasional; profil pengurus tersaji pada kartu personel.
+          </p>
+        </div>
+
+        <!-- Filter Bar (Rendered dynamically from HMIF_DATA.departments) -->
+        <div class="operator-filters" id="operator-filters-container">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Operators Hierarchical Roster -->
+        <div id="operators-grid-container" class="operators-roster-container">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <section id="section-department" class="content-section department-detail-page" hidden>
+        <div id="department-page-content"></div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION: BATALION ANGKATAN (COHORT REGIMENT)                     -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-cohort" class="content-section">
+        <div class="section-header">
+          <div class="section-tag cyan">COHORT REGIMENT ROSTER</div>
+          <h2 class="section-title">
+            STRUKTUR & BATALION ANGKATAN <span class="title-sub">// CADET BATTALIONS</span>
+          </h2>
+          <p class="section-desc">
+            Struktur kepengurusan dan perangkat angkatan mahasiswa Teknik Informatika UMB di bawah naungan Himpunan. Dilengkapi faksi emblem, kepemimpinan Komti/Sekretaris/Bendahara, perangkat divisi angkatan, tautan sosial media resmi, serta direktori dossier kader per angkatan.
+          </p>
+        </div>
+
+        <!-- Cohort Battalion Container -->
+        <div id="cohort-roster-container" class="cohort-roster-container">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 03: PROGRAM KERJA & AGENDA KEGIATAN                      -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-proker" class="content-section">
+        <div class="section-header">
+          <div class="section-tag">MISSION MATRIX</div>
+          <h2 class="section-title">
+            PROGRAM KERJA & AGENDA <span class="title-sub">// STRATEGIC OPERATIONS</span>
+          </h2>
+          <p class="section-desc">
+            Daftar program kerja berkala dan agenda strategis setiap divisi HMIF UMB, lengkap dengan sasaran partisipan,
+            target KPI, dan status realisasi misi.
+          </p>
+        </div>
+
+        <!-- Proker Filter Bar -->
+        <div class="proker-filters" style="display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap;">
+          <button class="filter-btn active" data-filter="all">SEMUA MISI</button>
+          <button class="filter-btn" data-filter="active">IN PROGRESS / AKTIF</button>
+          <button class="filter-btn" data-filter="upcoming">UPCOMING / AKAN DATANG</button>
+          <button class="filter-btn" data-filter="completed">COMPLETED / TERLAKSANA</button>
+        </div>
+
+        <!-- Proker Grid -->
+        <div id="proker-grid-container" class="proker-grid">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 03.5: E-VOTING SISTEM PEMILIHAN                           -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-voting" class="content-section" data-clearance-required="3">
+        <div class="section-header">
+          <div class="section-tag cyan">SECURE VOTING TERMINAL</div>
+          <h2 class="section-title">SISTEM E-VOTING <span class="title-sub">// PEMILIHAN KETUA HIMPPUNAN</span></h2>
+          <p class="section-desc">
+            Sistem pemungutan suara elektronik yang aman untuk memilih Ketua Himpunan Mahasiswa Informatika.
+            Setiap suara dicatat dengan receipt ID untuk verifikasi transparansi.
+          </p>
+        </div>
+
+        <div class="eVoting-toolbar">
+          <button class="btn-tactical" type="button" id="eVoting-refresh-btn" title="Refresh Daftar Pemilihan">
+            <span aria-hidden="true">↻</span> Refresh
+          </button>
+        </div>
+
+        <div id="eVoting-container" class="eVoting-container">
+          <div id="poll-list-container" class="poll-list">
+            <!-- List of polls rendered via JS -->
+          </div>
+        </div>
+      </section>
+
+      <section id="section-inventory" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag gold">ASSET CONTROL // BORROWING</div>
+          <h2 class="section-title">INVENTARIS HMIF <span class="title-sub">// ASSET & LOAN DESK</span></h2>
+          <p class="section-desc">Katalog aset bersama, pengajuan peminjaman, dan status pengembalian dengan pencatatan kondisi barang.</p>
+        </div>
+        <section id="inventory-admin-controls" class="inventory-admin-controls" hidden></section>
+        <div id="inventory-assets-grid" class="inventory-grid" aria-live="polite"></div>
+        <section class="inventory-loans-section" aria-labelledby="inventory-loans-heading">
+          <h3 id="inventory-loans-heading">PERMINTAAN & RIWAYAT PEMINJAMAN</h3>
+          <div id="inventory-loans-list" class="inventory-loans-list" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 04: KALENDER PENDIDIKAN TERPADU                          -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-calendar" class="content-section">
+        <div class="section-header">
+          <div class="section-tag red">INTEGRATED CHRONO-RADAR</div>
+          <h2 class="section-title">
+            KALENDER PENDIDIKAN & AGENDA DIVISI <span class="title-sub">// SYNCHRONIZED TIMELINE</span>
+          </h2>
+          <p class="section-desc">
+            Kalender terintegrasi yang menyelaraskan jadwal akademik resmi Universitas Mayasari Bakti (KRS, perkuliahan,
+            UTS, UAS, libur) dengan program kerja dan kegiatan setiap departemen/divisi HMIF.
+          </p>
+        </div>
+
+        <div class="calendar-layout">
+          <!-- Calendar Matrix Grid -->
+          <div class="calendar-matrix-card">
+            <div class="calendar-controls">
+              <div class="month-selector">
+                <button id="cal-prev-month" class="btn-tactical" type="button" aria-label="Bulan sebelumnya"><span aria-hidden="true">‹</span><span class="calendar-nav-label"> PREV</span></button>
+                <div id="cal-month-display" class="month-name">September 2026</div>
+                <button id="cal-next-month" class="btn-tactical" type="button" aria-label="Bulan berikutnya"><span class="calendar-nav-label">NEXT </span><span aria-hidden="true">›</span></button>
+              </div>
+
+              <!-- Filter Jenis Agenda -->
+              <div class="calendar-filter-bar">
+                <button class="cal-filter-btn active" data-cal-filter="all" type="button" aria-pressed="true">SEMUA AGENDA</button>
+                <button class="cal-filter-btn" data-cal-filter="academic" type="button" aria-pressed="false">AKADEMIK KAMPUS</button>
+                <button class="cal-filter-btn" data-cal-filter="litbang" type="button" aria-pressed="false">LITBANG</button>
+                <button class="cal-filter-btn" data-cal-filter="psdm" type="button" aria-pressed="false">PSDM</button>
+                <button class="cal-filter-btn" data-cal-filter="kominfo" type="button" aria-pressed="false">KOMINFO</button>
+              </div>
+            </div>
+
+            <!-- Calendar Days Grid -->
+            <div id="calendar-days-grid" class="calendar-grid" role="group" aria-label="Pilih tanggal kalender">
+              <!-- Rendered via JS -->
+            </div>
+
+            <!-- Legend Info -->
+            <div style="display: flex; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ak-text-dim);">
+              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                <span style="width: 10px; height: 10px; background: var(--ak-red); display: inline-block;"></span>
+                Akademik Kampus
+              </span>
+              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                <span style="width: 10px; height: 10px; background: var(--ak-cyan); display: inline-block;"></span>
+                Divisi Litbang
+              </span>
+              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                <span style="width: 10px; height: 10px; background: var(--ak-purple); display: inline-block;"></span>
+                Divisi PSDM
+              </span>
+              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                <span style="width: 10px; height: 10px; background: var(--ak-gold); display: inline-block;"></span>
+                Divisi Kominfo
+              </span>
+            </div>
+          </div>
+
+          <div class="calendar-detail-panel">
+            <div class="active-date-banner">
+              <div class="date-tag">INSPEKSI TANGGAL TERPILIH</div>
+              <div id="active-date-display" class="date-display" role="status" aria-live="polite">2026-10-10</div>
+            </div>
+
+            <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--ak-text-dim);">
+              AGENDA & SINKRONISASI ORGANISASI:
+            </div>
+
+            <div id="calendar-selected-day-events" class="day-event-list" aria-live="polite" aria-atomic="true">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 05: EDUKASI KADER, AD/ART & GBHO                         -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-doctrine" class="content-section">
+        <div class="section-header">
+          <div class="section-tag gold">ORGANIZATIONAL DOCTRINE</div>
+          <h2 class="section-title">
+            EDUKASI KADER, AD/ART & GBHO <span class="title-sub">// CONSTITUTIONAL CORE</span>
+          </h2>
+          <p class="section-desc">
+            Pusat edukasi dan literasi konstitusi bagi seluruh mahasiswa dan kader Teknik Informatika Universitas
+            Mayasari Bakti. Memahami hak, kewajiban, tata tertib persidangan, serta tahapan pengaderan berkelanjutan.
+          </p>
+        </div>
+
+        <!-- Doctrine View Tabs -->
+        <div class="doctrine-tabs">
+          <button class="doctrine-tab-btn active" data-doc-view="adart">
+            <span>📜</span> NASKAH AD/ART & GBHO
+          </button>
+          <button class="doctrine-tab-btn" data-doc-view="roadmap">
+            <span>🗺️</span> ALUR KADERISASI MAHASISWA
+          </button>
+          <button class="doctrine-tab-btn" data-doc-view="quiz">
+            <span>🎯</span> TES PEMAHAMAN KADER (PRTS APTITUDE)
+          </button>
+        </div>
+
+        <!-- View 1: AD/ART Accordion -->
+        <div id="doctrine-adart-view" class="doctrine-view-panel">
+          <div id="adart-accordion-container" class="doc-accordion">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- View 2: Roadmap Jenjang Kaderisasi -->
+        <div id="doctrine-roadmap-view" class="doctrine-view-panel" style="display: none;">
+          <div class="cadet-roadmap">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <span class="section-tag">CADET FORMATION PIPELINE</span>
+                <h3 style="font-family: var(--font-title); font-size: 1.5rem; color: #fff; margin-top: 0.35rem;">
+                  Roadmap Kaderisasi Mahasiswa Informatika UMB
+                </h3>
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--ak-gold);">
+                DIVISI PSDM // KURIKULUM PENGADERAN
+              </div>
+            </div>
+
+            <div id="cadet-roadmap-container" class="roadmap-steps">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- View 3: Cadet Knowledge Quiz -->
+        <div id="doctrine-quiz-view" class="doctrine-view-panel" style="display: none;">
+          <div class="quiz-container">
+            <div class="quiz-header">
+              <div>
+                <span class="section-tag gold" style="margin: 0 0 0.4rem;">PRTS SIMULATOR</span>
+                <h3 style="font-family: var(--font-title); font-size: 1.4rem; color: #fff;">
+                  Uji Pemahaman Konstitusi & Etika Kader
+                </h3>
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--ak-cyan);">
+                STANDAR KELULUSAN: 80% (KADER MADYA)
+              </div>
+            </div>
+
+            <div id="cadet-quiz-content">
+              <!-- Rendered via JS -->
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem;">
+              <button id="submit-cadet-quiz-btn" class="btn-tactical gold" style="padding: 0.75rem 1.75rem; font-size: 0.88rem;">
+                KIRIM & EVALUASI NILAI KADER &gt;&gt;
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 06: BERITA & DOKUMENTASI KEGIATAN                        -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-intel" class="content-section">
+        <div class="section-header">
+          <div class="section-tag">COMMUNICATIONS FEED</div>
+          <h2 class="section-title">
+            BERITA & DOKUMENTASI KEGIATAN <span class="title-sub">// FIELD DISPATCHES</span>
+          </h2>
+          <p class="section-desc">
+            Dokumentasi berkala, press release resmi, pencapaian prestasi akademik, dan arsip visual kegiatan Himpunan
+            Mahasiswa Informatika Universitas Mayasari Bakti.
+          </p>
+        </div>
+
+        <div id="news-grid-container" class="news-grid">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <!-- SECTION 07: COMM-LINK & LAYANAN ASPIRASI                         -->
+      <!-- ---------------------------------------------------------------- -->
+      <section id="section-commlink" class="content-section">
+        <div class="section-header">
+          <div class="section-tag gold">SECURE TRANSMISSION</div>
+          <h2 class="section-title">
+            SALURAN ASPIRASI & KONTAK <span class="title-sub">// COMM-LINK CENTER</span>
+          </h2>
+          <p class="section-desc">
+            Saluran komunikasi dua arah bagi mahasiswa Teknik Informatika Universitas Mayasari Bakti untuk menyampaikan
+            kritik, saran, usulan fasilitas, maupun keluhan kurikulum.
+          </p>
+        </div>
+
+        <div class="comm-grid">
+          <!-- Aspirasi Form Panel -->
+          <div class="aspirasi-form-panel">
+            <div style="margin-bottom: 1.5rem;">
+              <span class="section-tag" style="margin-bottom: 0.35rem;">TRANSMISSION UPLINK</span>
+              <h3 style="font-family: var(--font-title); font-size: 1.35rem; color: #fff;">
+                Kirim Aspirasi Mahasiswa
+              </h3>
+            </div>
+
+            <form id="aspirasi-form">
+              <fieldset class="aspiration-identity-mode">
+                <legend class="form-label">MODE PENGIRIMAN</legend>
+                <label><input type="radio" name="asp-anonymous" value="true" checked /> ANONIM</label>
+                <label><input type="radio" name="asp-anonymous" value="false" /> NON-ANONIM</label>
+              </fieldset>
+              <div class="form-group" data-aspiration-sender hidden>
+                <label class="form-label" for="asp-sender">NAMA PENGIRIM:</label>
+                <input type="text" id="asp-sender" class="form-input" maxlength="120" autocomplete="name" placeholder="Nama untuk tindak lanjut non-anonim" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="asp-category">KATEGORI ASPIRASI:</label>
+                <select id="asp-category" class="form-select">
+                  <option value="Fasilitas Lab Komputer & Kampus">Fasilitas Lab Komputer & Kampus</option>
+                  <option value="Kurikulum & Perkuliahan">Kurikulum & Perkuliahan</option>
+                  <option value="Layanan Administrasi Program Studi">Layanan Administrasi Program Studi</option>
+                  <option value="Kegiatan & Program Kerja Himpunan">Kegiatan & Program Kerja Himpunan</option>
+                  <option value="Advokasi & Kesejahteraan Mahasiswa">Advokasi & Kesejahteraan Mahasiswa</option>
+                  <option value="Kritik & Saran Pengurus">Kritik & Saran Pengurus</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="asp-message">PESAN ASPIRASI / MASUKAN:</label>
+                <textarea id="asp-message" class="form-textarea"
+                  placeholder="Tuliskan aspirasi, ide program kerja, atau kendala akademik Anda dengan santun dan jelas..."
+                  required></textarea>
+              </div>
+
+              <button type="submit" class="btn-tactical primary" style="width: 100%; justify-content: center; padding: 0.85rem;">
+                TRANSMISIKAN ASPIRASI KE PRTS &gt;&gt;
+              </button>
+              <p id="aspirasi-submit-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
+            </form>
+            <div id="aspirasi-ticket-result" class="aspirasi-ticket-result" role="status" aria-live="polite" tabindex="-1" hidden></div>
+          </div>
+
+          <!-- Contact & Transmission Log -->
+          <div class="contact-info-panel">
+            <div class="contact-card">
+              <span class="section-tag gold" style="margin-bottom: 0.75rem;">SEKRETARIAT & OFFICIAL CHANNELS</span>
+
+              <div class="contact-item">
+                <div class="contact-icon">📍</div>
+                <div class="contact-text">
+                  <h4>Sekretariat HMIF</h4>
+                  <p>Gedung FTIK Lantai 2, Kampus Universitas Mayasari Bakti, Kota Tasikmalaya, Jawa Barat.</p>
+                </div>
+              </div>
+
+              <div class="contact-item">
+                <div class="contact-icon">📧</div>
+                <div class="contact-text">
+                  <h4>Surat Elektronik (Email)</h4>
+                  <p>hmif@mayasaribakti.ac.id / sekretariat.hmifumb@gmail.com</p>
+                </div>
+              </div>
+
+              <div class="contact-item">
+                <div class="contact-icon">💬</div>
+                <div class="contact-text">
+                  <h4>Instagram & WhatsApp Center</h4>
+                  <p>@hmif_umb / Hotline: +62 812-3456-7890 (Humas Kominfo)</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="contact-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <span class="section-tag" style="margin: 0;">LOG TRANSMISI TERBARU</span>
+                <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--ak-text-dim);">REAL-TIME FEED</span>
+              </div>
+              <div id="aspirasi-history-list" style="max-height: 260px; overflow-y: auto;">
+                <!-- Rendered via JS -->
+              </div>
+              <form id="aspirasi-track-form" class="aspirasi-track-form">
+                <h4>LACAK TIKET ASPIRASI</h4>
+                <label class="form-group"><span class="form-label">TICKET ID</span><input class="form-input" name="ticketId" maxlength="48" autocomplete="off" required /></label>
+                <label class="form-group"><span class="form-label">KODE PELACAKAN PRIVAT</span><input class="form-input" name="trackingToken" maxlength="128" autocomplete="off" required /></label>
+                <button class="btn-tactical" type="submit">PERIKSA STATUS</button>
+                <p id="aspirasi-track-result" class="auth-feedback" role="status" aria-live="polite"></p>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- PRTS Global Modal Dialog -->
+    <div id="prts-modal-backdrop" class="prts-modal-backdrop" aria-hidden="true" inert>
+      <div class="prts-modal" role="dialog" aria-modal="true" aria-labelledby="prts-modal-title" tabindex="-1">
+        <div class="modal-header">
+          <div id="prts-modal-title" class="modal-title">PRTS INTEL FILE</div>
+          <button id="prts-modal-close" class="modal-close-btn" type="button" aria-label="Tutup Jendela Modal">✕</button>
+        </div>
+        <div id="prts-modal-content" class="modal-body">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- PRTS Footer -->
+    <footer class="prts-footer">
+      <div class="footer-inner">
+        <div>
+          <div class="footer-brand-title">HIMPUNAN MAHASISWA INFORMATIKA</div>
+          <div style="font-size: 0.95rem; color: var(--ak-cyan); margin-bottom: 0.75rem;">
+            UNIVERSITAS MAYASARI BAKTI
+          </div>
+          <p class="footer-brand-desc">
+            Organisasi eksekutif kemahasiswaan Program Studi Teknik Informatika Universitas Mayasari Bakti. Mewadahi
+            potensi, riset teknologi, kepemimpinan, dan aspirasi berlandaskan Tridharma Perguruan Tinggi.
+          </p>
+          <div style="font-size: 0.75rem; color: var(--ak-text-dim);">
+            Sistem Informasi PRTS dirancang dengan estetika Arknights Rhodes Island UI.
+          </div>
+        </div>
+
+        <div class="footer-nav-col">
+          <h5>DIREKTORI SISTEM</h5>
+          <ul class="footer-links">
+            <li><a href="#dashboard" data-directory-tab="dashboard">&gt; Dashboard Utama</a></li>
+            <li><a href="#knowledge" data-directory-tab="knowledge">&gt; Pusat Akademik & Klinik Koding</a></li>
+            <li><a href="#showcase" data-directory-tab="showcase">&gt; Karya Mahasiswa</a></li>
+            <li><a href="#career" data-directory-tab="career">&gt; Alumni & Karier</a></li>
+            <li><a href="#squad" data-directory-tab="squad">&gt; Struktur Pengurus Operator</a></li>
+            <li><a href="#cohort" data-directory-tab="cohort">&gt; Batalion Angkatan</a></li>
+            <li><a href="#proker" data-directory-tab="proker">&gt; Program Kerja & Agenda</a></li>
+            <li><a href="#calendar" data-directory-tab="calendar">&gt; Kalender Pendidikan Terpadu</a></li>
+            <li><a href="#doctrine" data-directory-tab="doctrine">&gt; Doktrin AD/ART & GBHO</a></li>
+            <li><a href="#intel" data-directory-tab="intel">&gt; Berita & Intel</a></li>
+            <li><a href="#commlink" data-directory-tab="commlink">&gt; Aspirasi & Kontak</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-nav-col">
+          <h5>DIVISI OPERASIONAL</h5>
+          <ul id="footer-department-links" class="footer-links">
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div class="prts-version">
+          <span class="hazard-strip" style="width: 32px; height: 6px;"></span>
+          <span>© 2026 HMIF UNIVERSITAS MAYASARI BAKTI. ALL RIGHTS RESERVED.</span>
+        </div>
+        <div>
+          <span>RHODES ISLAND TERMINAL PROTOCOL // SEC-04 TASIKMALAYA</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <aside id="soundtrack-player" class="soundtrack-player" aria-label="Pemutar soundtrack" hidden>
+    <div class="soundtrack-player-heading">
+      <span class="section-tag gold">AMBIENT AUDIO</span>
+      <span id="soundtrack-status" role="status" aria-live="polite">Pilih soundtrack</span>
+      <button id="soundtrack-hide" class="soundtrack-hide" type="button" aria-label="Sembunyikan pemutar; musik tetap berjalan">×</button>
+    </div>
+    <label class="soundtrack-select-label" for="soundtrack-track-select">TRACK</label>
+    <select id="soundtrack-track-select" class="form-select" aria-label="Pilih soundtrack"></select>
+    <div class="soundtrack-player-controls">
+      <button id="soundtrack-play-toggle" class="btn-tactical primary" type="button" aria-pressed="false">PUTAR</button>
+      <button id="soundtrack-mute-toggle" class="btn-tactical" type="button" aria-pressed="false">SENYAP</button>
+      <label class="soundtrack-volume-label" for="soundtrack-volume">VOLUME</label>
+      <input id="soundtrack-volume" type="range" min="0" max="1" step="0.01" value="0.35" aria-label="Volume soundtrack" />
+    </div>
+    <audio id="soundtrack-audio" preload="none"></audio>
+  </aside>
+  <button id="soundtrack-reopen" class="soundtrack-reopen" type="button" aria-label="Tampilkan pemutar soundtrack" aria-controls="soundtrack-player" aria-expanded="false" hidden>
+    <span aria-hidden="true">♫</span> AUDIO
+  </button>
+
+  <section id="member-workspace" class="member-workspace" aria-label="Dashboard anggota HMIF" hidden>
+    <aside class="workspace-sidebar">
+      <a class="workspace-brand" href="#dashboard" data-workspace-public>
+        <img src="/assets/hmif_umb_logo.jpg" alt="" />
+        <span><strong>HMIF UMB</strong><small data-workspace-audience>RUANG ANGGOTA</small></span>
+      </a>
+      <div id="workspace-profile-summary" class="workspace-profile-summary"></div>
+      <nav id="workspace-navigation" class="workspace-navigation" aria-label="Navigasi dashboard anggota"></nav>
+      <button class="workspace-public-link" type="button" data-workspace-public>KEMBALI KE PORTAL PUBLIK</button>
+    </aside>
+    <main class="workspace-main">
+      <header class="workspace-topbar">
+        <div><span class="section-tag cyan" data-workspace-audience>RUANG ANGGOTA</span><h1 id="workspace-page-title">Dashboard</h1></div>
+        <button class="btn-tactical" type="button" data-workspace-profile>PROFIL & AKUN</button>
+      </header>
+      <div id="workspace-content" class="workspace-content"></div>
+    </main>
+  </section>
+
+  <!-- Main JavaScript Module -->
+  <script type="module" src="/src/scripts/main.js"></script>
+</body>
+
+</html>

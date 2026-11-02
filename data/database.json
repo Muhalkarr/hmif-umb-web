@@ -1,0 +1,343 @@
+{
+  "users": [
+    {
+      "nim": "22040101",
+      "name": "Arkan Raihan Pratama",
+      "email": "arkan.kahim@mayasaribakti.ac.id",
+      "password_hash": "$2b$10$KLHcPpG6DWiZjV3uBMKPjeSzblola4k01lCogU7Hor5RH/R6vj9eq",
+      "generation": "2022",
+      "membership_stage": "Anggota Biasa",
+      "division": "BPH",
+      "clearance_level": 3,
+      "role_title": "Ketua Himpunan (Kahim)",
+      "code_name": "FALCON",
+      "avatar_silhouette": "/assets/silhouette_male.jpg",
+      "created_at": "2026-09-01T08:00:00.000Z"
+    },
+    {
+      "nim": "admin",
+      "name": "PRTS Terminal Administrator",
+      "email": "sysadmin@mayasaribakti.ac.id",
+      "password_hash": "$2b$10$KLHcPpG6DWiZjV3uBMKPjeSzblola4k01lCogU7Hor5RH/R6vj9eq",
+      "generation": "2020",
+      "membership_stage": "Anggota Luar Biasa",
+      "division": "PRTS Core Webmaster",
+      "clearance_level": 4,
+      "role_title": "PRTS Root Admin",
+      "code_name": "PRTS-OVERSEER",
+      "avatar_silhouette": "/assets/silhouette_male.jpg",
+      "created_at": "2026-09-01T08:00:00.000Z",
+      "session_version": 2
+    },
+    {
+      "nim": "22040140",
+      "name": "Fauzan Akbar Rabbani",
+      "email": "fauzan.litbang@mayasaribakti.ac.id",
+      "password_hash": "$2b$10$KLHcPpG6DWiZjV3uBMKPjeSzblola4k01lCogU7Hor5RH/R6vj9eq",
+      "generation": "2022",
+      "membership_stage": "Anggota Biasa",
+      "division": "Litbang",
+      "clearance_level": 2,
+      "role_title": "Kepala Divisi Litbang",
+      "code_name": "CIPHER",
+      "avatar_silhouette": "/assets/silhouette_male.jpg",
+      "created_at": "2026-09-01T08:00:00.000Z"
+    },
+    {
+      "nim": "23040122",
+      "name": "Rifka Nur Syifa",
+      "email": "rifka.bendum@mayasaribakti.ac.id",
+      "password_hash": "$2b$10$KLHcPpG6DWiZjV3uBMKPjeSzblola4k01lCogU7Hor5RH/R6vj9eq",
+      "generation": "2023",
+      "membership_stage": "Anggota Biasa",
+      "division": "BPH",
+      "clearance_level": 3,
+      "role_title": "Bendahara Umum",
+      "code_name": "TREASURY",
+      "avatar_silhouette": "/assets/silhouette_female.jpg",
+      "created_at": "2026-09-01T08:00:00.000Z"
+    },
+    {
+      "nim": "26040188",
+      "name": "Ahmad Faiz Rahmatullah",
+      "email": "faiz.maba26@mayasaribakti.ac.id",
+      "password_hash": "$2b$10$KLHcPpG6DWiZjV3uBMKPjeSzblola4k01lCogU7Hor5RH/R6vj9eq",
+      "generation": "2026",
+      "membership_stage": "Anggota Muda",
+      "division": "Kader Muda",
+      "clearance_level": 1,
+      "role_title": "Kader Pratama",
+      "code_name": "CADET-01",
+      "avatar_silhouette": "/assets/silhouette_male.jpg",
+      "created_at": "2026-09-20T08:00:00.000Z"
+    }
+  ],
+  "missions_proker": [
+    {
+      "id": "proker-1",
+      "title": "Informatics Welcome & Orientation (IN-FLOW 2026)",
+      "division": "PSDM",
+      "category": "Kaderisasi",
+      "status": "completed",
+      "date_start": "2026-10-10",
+      "date_end": "2026-10-12",
+      "target_participants": "120 Mahasiswa Baru Angkatan 2026",
+      "kpi_indicator": "Tingkat partisipasi 98%, pembagian kakak asuh 100%",
+      "budget_allocated": 3500000,
+      "budget_spent": 3350000,
+      "lpj_notes": "Acara berlangsung sukses di Aula Kampus UMB. Seluruh mahasiswa baru telah terdata dan mendapatkan bimbingan awal kurikulum.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    },
+    {
+      "id": "proker-2",
+      "title": "DevLab: Intensive Fullstack & Cloud Workshop",
+      "division": "Litbang",
+      "category": "Riset & Coding",
+      "status": "active",
+      "date_start": "2026-10-24",
+      "date_end": "2026-11-15",
+      "target_participants": "Seluruh Kader HMIF UMB & Mahasiswa Aktif",
+      "kpi_indicator": "Output 25 prototype aplikasi web open-source siap hosting",
+      "budget_allocated": 4000000,
+      "budget_spent": 1800000,
+      "lpj_notes": "Modul materi Git dan Docker telah selesai, minggu ini memasuki sesi perancangan REST API terdistribusi.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    },
+    {
+      "id": "proker-3",
+      "title": "Latihan Dasar Kepemimpinan Mahasiswa (LDKM) Informatika",
+      "division": "PSDM",
+      "category": "Kaderisasi Konstitusi",
+      "status": "upcoming",
+      "date_start": "2026-11-28",
+      "date_end": "2026-11-29",
+      "target_participants": "Calon Pengurus & Kader Angkatan 2026",
+      "kpi_indicator": "Kelulusan 100% peserta dengan predikat Kader Terlatih AD/ART",
+      "budget_allocated": 6500000,
+      "budget_spent": 500000,
+      "lpj_notes": "Penyusunan modul persidangan dan koordinasi villa konstitusi sedang difinalisasi oleh panitia.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    },
+    {
+      "id": "proker-4",
+      "title": "Informatics Hackathon & Innovation Summit (IHIS 2026)",
+      "division": "Litbang",
+      "category": "Kompetisi",
+      "status": "upcoming",
+      "date_start": "2026-12-18",
+      "date_end": "2026-12-20",
+      "target_participants": "Mahasiswa Informatika se-Priangan Timur",
+      "kpi_indicator": "30 tim peserta, 3 proposal prototipe Smart Campus siap inkubasi",
+      "budget_allocated": 8000000,
+      "budget_spent": 1200000,
+      "lpj_notes": "Proposal sponsor industri teknologi sedang diajukan oleh Divisi Kominfo.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    },
+    {
+      "id": "proker-5",
+      "title": "Cyber Security & AI National Tech Talkshow",
+      "division": "Kominfo",
+      "category": "Seminar Publik",
+      "status": "upcoming",
+      "date_start": "2027-01-16",
+      "date_end": "2027-01-16",
+      "target_participants": "300 Peserta Umum & Sivitas Akademika",
+      "kpi_indicator": "300 peserta daring/luring, liputan pers kampus",
+      "budget_allocated": 5000000,
+      "budget_spent": 0,
+      "lpj_notes": "Dua pembicara praktisi cybersecurity nasional telah mengonfirmasi kehadiran.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    },
+    {
+      "id": "proker-6",
+      "title": "Musyawarah Besar (MUBES) & LPJ Kepengurusan HMIF",
+      "division": "BPH",
+      "category": "Permusyawaratan",
+      "status": "upcoming",
+      "date_start": "2027-03-20",
+      "date_end": "2027-03-22",
+      "target_participants": "Seluruh Anggota Biasa & Kader HMIF UMB",
+      "kpi_indicator": "Korum sidang terpenuhi, LPJ diterima, regenerasi kepemimpinan mulus",
+      "budget_allocated": 4500000,
+      "budget_spent": 0,
+      "lpj_notes": "Draft amandemen AD/ART dan evaluasi GBHO sedang dipersiapkan komisi perumus.",
+      "created_at": "2026-09-01T00:00:00.000Z"
+    }
+  ],
+  "academic_calendar": [
+    {
+      "id": "cal-1",
+      "date_str": "2026-09-15",
+      "title": "Awal Periode KRS Semester Ganjil 2026/2027",
+      "type": "academic",
+      "division": "Akademik Kampus",
+      "location": "Portal SIAKAD UMB",
+      "desc": "Pengisian rencana studi online bagi seluruh mahasiswa Teknik Informatika.",
+      "integrated_with": "BPH (Bimbingan Konsultasi KRS Maba)",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-2",
+      "date_str": "2026-09-22",
+      "title": "Kuliah Perdana Semester Ganjil 2026/2027",
+      "type": "academic",
+      "division": "Akademik Kampus",
+      "location": "Gedung Rektorat & FTIK UMB",
+      "desc": "Hari pertama perkuliahan tatap muka dan praktikum laboratorium.",
+      "integrated_with": "Litbang (Pengecekan Kesiapan Lab Komputer)",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-3",
+      "date_str": "2026-10-10",
+      "title": "IN-FLOW 2026: Welcoming Maba Informatika",
+      "type": "psdm",
+      "division": "PSDM",
+      "location": "Aula Utama Universitas Mayasari Bakti",
+      "desc": "Pengenalan kultur prodi dan kaderisasi awal mahasiswa baru angkatan 2026.",
+      "integrated_with": "Akademik UMB (Masa Bimbingan Mahasiswa)",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-4",
+      "date_str": "2026-10-24",
+      "title": "Kick-off DevLab Weekend Coding Workshop",
+      "type": "litbang",
+      "division": "Litbang",
+      "location": "Lab Komputasi Cerdas Gedung B",
+      "desc": "Sesi perdana pelatihan Fullstack Web & Git Version Control.",
+      "integrated_with": "Akademik (Pengayaan Praktikum Pemrograman Web)",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-5",
+      "date_str": "2026-11-09",
+      "title": "Pekan Ujian Tengah Semester (UTS) Ganjil",
+      "type": "academic",
+      "division": "Akademik Kampus",
+      "location": "Seluruh Ruang Kuliah FTIK",
+      "desc": "Evaluasi tengah semester mata kuliah teori dan praktikum. Bebas dari kegiatan ormawa.",
+      "integrated_with": "BPH (Sterilisasi Kegiatan Organisasi Masa Ujian)",
+      "is_exam_period": true
+    },
+    {
+      "id": "cal-6",
+      "date_str": "2026-11-28",
+      "title": "Latihan Dasar Kepemimpinan Mahasiswa (LDKM)",
+      "type": "psdm",
+      "division": "PSDM",
+      "location": "Bumi Perkemahan / Villa Konstitusi UMB",
+      "desc": "Kaderisasi formal landasan AD/ART & GBHO bagi kader baru.",
+      "integrated_with": "BPH & Dosen Pembina Kemahasiswaan",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-7",
+      "date_str": "2026-12-18",
+      "title": "Informatics Hackathon 48-Hour Challenge",
+      "type": "litbang",
+      "division": "Litbang",
+      "location": "Hall Co-Working Space Kampus UMB",
+      "desc": "Kompetisi perancangan solusi digital Smart Campus.",
+      "integrated_with": "Mitra Industri & FTIK UMB",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-8",
+      "date_str": "2027-01-11",
+      "title": "Ujian Akhir Semester (UAS) Ganjil",
+      "type": "academic",
+      "division": "Akademik Kampus",
+      "location": "Kampus Universitas Mayasari Bakti",
+      "desc": "Evaluasi akhir capaian pembelajaran semester ganjil.",
+      "integrated_with": "BPH (Masa Tenang Organisasi)",
+      "is_exam_period": true
+    },
+    {
+      "id": "cal-9",
+      "date_str": "2027-01-16",
+      "title": "Cyber Security & AI National Tech Talkshow",
+      "type": "kominfo",
+      "division": "Kominfo",
+      "location": "Auditorium UMB & Zoom Live",
+      "desc": "Seminar nasional penutup semester ganjil.",
+      "integrated_with": "Humas Kampus UMB",
+      "is_exam_period": false
+    },
+    {
+      "id": "cal-10",
+      "date_str": "2027-03-20",
+      "title": "Musyawarah Besar (MUBES) HMIF UMB",
+      "type": "bph",
+      "division": "BPH",
+      "location": "Ruang Sidang Utama FTIK UMB",
+      "desc": "Sidang pleno evaluasi AD/ART, GBHO, dan pemilihan Kahim baru.",
+      "integrated_with": "DPM FTIK & Dewan Penasihat Organisasi",
+      "is_exam_period": false
+    }
+  ],
+  "aspirations": [
+    {
+      "id": "asp-1",
+      "sender_nim_or_anon": "Mahasiswa Angkatan 2024",
+      "category": "Fasilitas Lab Komputer",
+      "message": "Mohon penambahan modul latihan pemrograman Python dan koneksi WiFi yang lebih stabil di Lab B gedung FTIK.",
+      "status": "Ditindaklanjuti",
+      "bph_response": "Aspirasi telah disampaikan kepada Kepala Lab dan Bagian Sarpras FTIK. Penambahan access point wifi dijadwalkan pertengahan Oktober.",
+      "created_at": "2026-09-29T10:15:00.000Z"
+    },
+    {
+      "id": "asp-2",
+      "sender_nim_or_anon": "Anonim (Informatika)",
+      "category": "Kurikulum & Perkuliahan",
+      "message": "Sangat mengapresiasi workshop web dev kemarin, usul berikutnya adakan materi cloud computing AWS/GCP.",
+      "status": "Diterima",
+      "bph_response": "Terima kasih atas masukannya. Divisi Litbang telah memasukkan materi cloud ke kurikulum DevLab pekan ketiga.",
+      "created_at": "2026-09-27T14:30:00.000Z"
+    }
+  ],
+  "financial_ledger": [
+    {
+      "id": "fin-1",
+      "date": "2026-09-05",
+      "type": "INCOME",
+      "category": "Dana Kemahasiswaan Kampus",
+      "description": "Pencairan termin I dana operasional himpunan dari Rektorat UMB",
+      "amount": 15000000,
+      "division": "BPH",
+      "recorded_by": "Bendahara Umum (Rifka)"
+    },
+    {
+      "id": "fin-2",
+      "date": "2026-09-12",
+      "type": "INCOME",
+      "category": "Iuran Kas Anggota",
+      "description": "Iuran rutin kas pengurus periode September 2026",
+      "amount": 1250000,
+      "division": "BPH",
+      "recorded_by": "Bendahara Umum (Rifka)"
+    },
+    {
+      "id": "fin-3",
+      "date": "2026-09-18",
+      "type": "EXPENSE",
+      "category": "Operasional Kesekretariatan",
+      "description": "Pengadaan kertas F4, tinta printer, dan stempel dinas HMIF",
+      "amount": 450000,
+      "division": "Sekretariat",
+      "recorded_by": "Bendahara Umum (Rifka)"
+    },
+    {
+      "id": "fin-4",
+      "date": "2026-10-09",
+      "type": "EXPENSE",
+      "category": "Proker IN-FLOW",
+      "description": "Konsumsi dan banner penyambutan mahasiswa baru angkatan 2026",
+      "amount": 3350000,
+      "division": "PSDM",
+      "recorded_by": "Bendahara Umum (Rifka)"
+    }
+  ],
+  "cadet_evaluations": [],
+  "attendance_records": []
+}

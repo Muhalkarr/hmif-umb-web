@@ -1,0 +1,1581 @@
+/* ==========================================================================
+   HMIF UNIVERSITAS MAYASARI BAKTI - PRTS COMPONENTS STYLES
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   HUMAN SECTION
+   -------------------------------------------------------------------------- */
+.hero-section {
+  position: relative;
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  padding: 4rem 1.5rem;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 70% 30%,
+      rgba(0, 229, 255, 0.08) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      circle at 10% 80%,
+      rgba(255, 222, 0, 0.05) 0%,
+      transparent 50%
+    ),
+    var(--ak-bg-dark);
+}
+
+.hero-bg-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("/assets/hmif_prts_bridge.jpg");
+  background-size: cover;
+  background-position: center;
+  opacity: 0.22;
+  filter: contrast(1.1) brightness(0.85);
+  pointer-events: none;
+}
+
+.hero-grid-mesh {
+  position: absolute;
+  inset: 0;
+  background-size: 40px 40px;
+  background-image: var(--grid-pattern);
+  pointer-events: none;
+}
+
+.hero-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 3rem;
+  align-items: center;
+}
+
+.hero-intel-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.85rem;
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid var(--ak-cyan);
+  color: var(--ak-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  clip-path: var(--clip-badge);
+  margin-bottom: 1.25rem;
+}
+
+.hero-title {
+  font-family: var(--font-title);
+  font-size: 3.4rem;
+  line-height: 1.08;
+  color: var(--ak-text-primary);
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.04em;
+}
+
+.hero-title .glow-cyan {
+  color: var(--ak-cyan);
+  text-shadow: 0 0 18px var(--ak-cyan-glow);
+}
+
+.hero-title .glow-gold {
+  color: var(--ak-gold);
+  text-shadow: 0 0 18px var(--ak-gold-glow);
+}
+
+.hero-lead {
+  font-size: 1.1rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.65;
+  margin-bottom: 2rem;
+  max-width: 640px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+/* Hero Key Metrics HUD */
+.hero-stats-hud {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--ak-border);
+}
+
+.stat-box {
+  background: rgba(17, 23, 35, 0.6);
+  border: 1px solid var(--ak-border);
+  padding: 0.9rem;
+  clip-path: var(--clip-corner-top-right);
+  position: relative;
+}
+
+.stat-box::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 2px;
+  background: var(--ak-cyan);
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--ak-cyan);
+  margin-bottom: 0.2rem;
+}
+
+.stat-value.gold {
+  color: var(--ak-gold);
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Hero Right: PRTS Terminal Card */
+.prts-terminal-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  clip-path: var(--clip-cut-corner);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+  position: relative;
+  overflow: hidden;
+}
+
+.prts-terminal-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--ak-cyan), var(--ak-gold));
+}
+
+.terminal-header-bar {
+  background: rgba(11, 15, 23, 0.9);
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ak-border);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--ak-text-secondary);
+}
+
+.terminal-emblem-wrap {
+  position: relative;
+  text-align: center;
+  padding: 1.5rem 1.5rem 0.5rem;
+}
+
+.terminal-emblem {
+  display: block;
+  max-width: 100%;
+  margin-inline: auto;
+  width: 140px;
+  height: 140px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  object-fit: contain;
+  clip-path: none !important;
+  transition: transform var(--transition-normal);
+}
+
+.terminal-emblem:hover {
+  transform: scale(1.05);
+}
+
+.terminal-brief-body {
+  padding: 1.5rem;
+}
+
+.terminal-brief-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.55rem 0;
+  border-bottom: 1px dashed rgba(45, 62, 90, 0.6);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.terminal-brief-row .label {
+  color: var(--ak-text-dim);
+}
+
+.terminal-brief-row .value {
+  color: var(--ak-text-primary);
+  font-weight: 600;
+}
+
+.terminal-brief-row .value.cyan {
+  color: var(--ak-cyan);
+}
+
+.terminal-brief-row .value.gold {
+  color: var(--ak-gold);
+}
+
+.sambutan-preview {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: rgba(22, 30, 46, 0.6);
+  border-left: 3px solid var(--ak-gold);
+  border-radius: 0 4px 4px 0;
+}
+
+.sambutan-preview p {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--ak-text-secondary);
+  font-style: italic;
+  margin-bottom: 0.5rem;
+}
+
+.sambutan-author {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ak-gold);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   VISION & MISSION SECTION
+   -------------------------------------------------------------------------- */
+.visi-misi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.visi-card,
+.misi-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 2rem;
+  clip-path: var(--clip-corner-top-right);
+  position: relative;
+}
+
+.visi-card::before {
+  content: "VISION";
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  font-family: var(--font-title);
+  font-size: 2.2rem;
+  color: rgba(0, 229, 255, 0.05);
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.misi-card::before {
+  content: "MISSION";
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  font-family: var(--font-title);
+  font-size: 2.2rem;
+  color: rgba(255, 222, 0, 0.05);
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.card-badge-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.visi-text {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--ak-text-primary);
+  border-left: 3px solid var(--ak-cyan);
+  padding-left: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.misi-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.misi-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  font-size: 0.92rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.55;
+}
+
+.misi-num {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #07090e;
+  background: var(--ak-gold);
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  clip-path: var(--clip-badge);
+  margin-top: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   OPERATOR SQUAD / STRUKTUR ORGANISASI
+   -------------------------------------------------------------------------- */
+.operator-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.filter-btn {
+  padding: 0.5rem 1rem;
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  clip-path: var(--clip-badge);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-btn:hover {
+  border-color: var(--ak-cyan);
+  color: var(--ak-cyan);
+}
+
+.filter-btn.active {
+  background: var(--ak-cyan);
+  color: #07090e;
+  font-weight: 700;
+  border-color: var(--ak-cyan);
+  box-shadow: 0 0 12px var(--ak-cyan-glow);
+}
+
+.operators-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Arknights Tactical Operator Card */
+.operator-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  position: relative;
+  overflow: hidden;
+  clip-path: var(--clip-corner-top-right);
+  transition:
+    transform var(--transition-normal),
+    box-shadow var(--transition-normal),
+    border-color var(--transition-fast);
+  cursor: pointer;
+}
+
+.operator-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--ak-cyan);
+  box-shadow:
+    0 12px 28px rgba(0, 229, 255, 0.15),
+    0 0 0 1px var(--ak-cyan);
+}
+
+.operator-card-header {
+  position: relative;
+  height: 200px;
+  background: #090e17;
+  overflow: hidden;
+}
+
+.operator-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  transition: transform var(--transition-normal);
+  filter: contrast(1.05) brightness(0.95);
+}
+
+.operator-card:hover .operator-portrait {
+  transform: scale(1.04);
+}
+
+.operator-rarity-strip {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 2;
+}
+
+.star-icon {
+  color: var(--ak-gold);
+  font-size: 0.9rem;
+  filter: drop-shadow(0 0 4px var(--ak-gold));
+}
+
+.operator-class-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 0.25rem 0.6rem;
+  background: rgba(11, 15, 23, 0.88);
+  border: 1px solid var(--ak-cyan);
+  color: var(--ak-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  clip-path: var(--clip-badge);
+  z-index: 2;
+}
+
+.operator-info-body {
+  padding: 1.25rem;
+}
+
+.operator-division-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ak-gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.operator-name {
+  font-family: var(--font-title);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.25rem;
+  letter-spacing: 0.04em;
+}
+
+.operator-role {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ak-text-secondary);
+  margin-bottom: 1rem;
+}
+
+/* Tactical Stats Bar */
+.operator-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+  background: rgba(11, 15, 23, 0.6);
+  border: 1px solid var(--ak-border);
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.stat-row .stat-name {
+  color: var(--ak-text-dim);
+}
+
+.stat-bar-track {
+  width: 120px;
+  height: 5px;
+  background: rgba(45, 62, 90, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: var(--ak-cyan);
+  box-shadow: 0 0 6px var(--ak-cyan-glow);
+}
+
+.stat-bar-fill.gold {
+  background: var(--ak-gold);
+  box-shadow: 0 0 6px var(--ak-gold-glow);
+}
+
+.operator-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--ak-border);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-dim);
+}
+
+.operator-card-footer .detail-link {
+  color: var(--ak-cyan);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* --------------------------------------------------------------------------
+   INTEGRATED ACADEMIC CALENDAR & DEPARTMENT PROKER
+   -------------------------------------------------------------------------- */
+.calendar-layout {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.calendar-matrix-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 1.5rem;
+  clip-path: var(--clip-corner-top-right);
+}
+
+.calendar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.month-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.month-name {
+  font-family: var(--font-title);
+  font-size: 1.35rem;
+  color: var(--ak-text-primary);
+  letter-spacing: 0.08em;
+  min-width: 160px;
+  text-align: center;
+}
+
+.calendar-filter-bar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cal-filter-btn {
+  padding: 0.3rem 0.65rem;
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  clip-path: var(--clip-badge);
+  cursor: pointer;
+}
+
+.cal-filter-btn.active {
+  background: var(--ak-cyan-subtle);
+  border-color: var(--ak-cyan);
+  color: var(--ak-cyan);
+  font-weight: 700;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-day-header {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-dim);
+  text-align: center;
+  padding: 0.5rem 0;
+  text-transform: uppercase;
+  background: rgba(14, 20, 31, 0.4);
+}
+
+.cal-cell {
+  min-height: 84px;
+  background: rgba(18, 24, 36, 0.75);
+  border: 1px solid rgba(45, 62, 90, 0.4);
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.cal-cell:hover {
+  border-color: var(--ak-cyan);
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.cal-cell.today {
+  border-color: var(--ak-gold);
+  background: rgba(255, 222, 0, 0.06);
+}
+
+.cal-cell.other-month {
+  opacity: 0.3;
+}
+
+.cal-day-num {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ak-text-secondary);
+}
+
+.cal-cell.today .cal-day-num {
+  color: var(--ak-gold);
+  font-weight: 700;
+}
+
+.cal-events-indicators {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.cal-event-pill {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid;
+}
+
+.cal-event-pill.academic {
+  background: rgba(255, 51, 85, 0.15);
+  color: #ff99aa;
+  border-left-color: var(--ak-red);
+}
+
+.cal-event-pill.litbang {
+  background: rgba(0, 229, 255, 0.15);
+  color: #80f0ff;
+  border-left-color: var(--ak-cyan);
+}
+
+.cal-event-pill.psdm {
+  background: rgba(179, 136, 255, 0.15);
+  color: #d1b8ff;
+  border-left-color: var(--ak-purple);
+}
+
+.cal-event-pill.kominfo {
+  background: rgba(255, 222, 0, 0.15);
+  color: #fff080;
+  border-left-color: var(--ak-gold);
+}
+
+.cal-event-pill.bph {
+  background: rgba(0, 255, 136, 0.15);
+  color: #80ffc0;
+  border-left-color: var(--ak-green);
+}
+
+/* Calendar Event Detail Sidebar */
+.calendar-detail-panel {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 1.5rem;
+  clip-path: var(--clip-corner-top-right);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.active-date-banner {
+  padding: 1rem;
+  background: rgba(14, 20, 31, 0.8);
+  border-left: 3px solid var(--ak-cyan);
+  font-family: var(--font-mono);
+}
+
+.active-date-banner .date-tag {
+  font-size: 0.7rem;
+  color: var(--ak-text-dim);
+  text-transform: uppercase;
+}
+
+.active-date-banner .date-display {
+  font-family: var(--font-title);
+  font-size: 1.4rem;
+  color: var(--ak-cyan);
+  margin-top: 0.2rem;
+}
+
+.day-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.event-item-card {
+  background: rgba(22, 30, 46, 0.7);
+  border: 1px solid var(--ak-border);
+  padding: 1rem;
+  clip-path: var(--clip-corner-top-right);
+  transition: all var(--transition-fast);
+}
+
+.event-item-card:hover {
+  border-color: var(--ak-cyan);
+}
+
+.event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.event-type-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  clip-path: var(--clip-badge);
+}
+
+.event-item-title {
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.event-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-secondary);
+}
+
+.event-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* --------------------------------------------------------------------------
+   DOCTRINE: AD/ART, GBHO & KADERISASI
+   -------------------------------------------------------------------------- */
+.doctrine-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.doctrine-tab-btn {
+  padding: 0.65rem 1.25rem;
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  clip-path: var(--clip-badge);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all var(--transition-fast);
+}
+
+.doctrine-tab-btn:hover {
+  color: var(--ak-cyan);
+  border-color: var(--ak-cyan);
+}
+
+.doctrine-tab-btn.active {
+  background: var(--ak-gold);
+  color: #07090e;
+  font-weight: 700;
+  border-color: var(--ak-gold);
+  box-shadow: 0 0 14px var(--ak-gold-glow);
+}
+
+.doctrine-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+/* Roadmap Alur Kaderisasi */
+.cadet-roadmap {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 2rem;
+  clip-path: var(--clip-corner-top-right);
+  margin-bottom: 2rem;
+}
+
+.roadmap-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  position: relative;
+}
+
+.step-card {
+  background: rgba(14, 20, 31, 0.75);
+  border: 1px solid var(--ak-border);
+  padding: 1.25rem;
+  clip-path: var(--clip-corner-top-right);
+  position: relative;
+}
+
+.step-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--ak-border);
+}
+
+.step-card.active-step::before {
+  background: var(--ak-cyan);
+  box-shadow: 0 0 10px var(--ak-cyan-glow);
+}
+
+.step-number {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ak-cyan);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.step-title {
+  font-family: var(--font-title);
+  font-size: 1.1rem;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.step-desc {
+  font-size: 0.82rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.5;
+}
+
+/* AD/ART Accordion */
+.doc-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.doc-accordion-item {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  overflow: hidden;
+  clip-path: var(--clip-corner-top-right);
+}
+
+.doc-accordion-header {
+  padding: 1.25rem 1.5rem;
+  background: rgba(14, 20, 31, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.doc-accordion-header:hover {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.doc-title-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.doc-bab-tag {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  background: var(--ak-gold-subtle);
+  border: 1px solid var(--ak-gold);
+  color: var(--ak-gold);
+  clip-path: var(--clip-badge);
+}
+
+.doc-bab-title {
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  color: var(--ak-text-primary);
+  letter-spacing: 0.04em;
+}
+
+.doc-accordion-body {
+  padding: 1.5rem;
+  border-top: 1px solid var(--ak-border);
+  display: none;
+  font-size: 0.92rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.7;
+}
+
+.doc-accordion-item.open .doc-accordion-body {
+  display: block;
+}
+
+.pasal-block {
+  margin-bottom: 1.25rem;
+}
+
+.pasal-title {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ak-cyan);
+  margin-bottom: 0.4rem;
+}
+
+/* Cadet Knowledge Test Card (Kuis Interaktif) */
+.quiz-container {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 2rem;
+  clip-path: var(--clip-cut-corner);
+  position: relative;
+}
+
+.quiz-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--ak-border);
+  padding-bottom: 1rem;
+}
+
+.quiz-question-box {
+  background: rgba(14, 20, 31, 0.7);
+  border-left: 4px solid var(--ak-cyan);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.quiz-q-num {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ak-cyan);
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.quiz-q-text {
+  font-size: 1.1rem;
+  color: var(--ak-text-primary);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.quiz-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.quiz-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-primary);
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+  clip-path: var(--clip-corner-top-right);
+  transition: all var(--transition-fast);
+}
+
+.quiz-option-btn:hover {
+  border-color: var(--ak-cyan);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.quiz-option-btn.selected {
+  border-color: var(--ak-gold);
+  background: rgba(255, 222, 0, 0.12);
+  color: var(--ak-gold);
+}
+
+.quiz-option-btn.correct {
+  border-color: var(--ak-green);
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--ak-green);
+}
+
+.quiz-option-btn.wrong {
+  border-color: var(--ak-red);
+  background: rgba(255, 51, 85, 0.15);
+  color: var(--ak-red);
+}
+
+.opt-letter {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 20, 31, 0.8);
+  border: 1px solid var(--ak-border);
+  border-radius: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   MISSION / PROKER MATRIX
+   -------------------------------------------------------------------------- */
+.proker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.5rem;
+}
+
+.proker-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  clip-path: var(--clip-corner-top-right);
+  padding: 1.5rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all var(--transition-fast);
+}
+
+.proker-card:hover {
+  border-color: var(--ak-cyan);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.proker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.proker-division {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.2rem 0.6rem;
+  clip-path: var(--clip-badge);
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.status-badge.completed {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--ak-green);
+  border: 1px solid rgba(0, 255, 136, 0.4);
+}
+
+.status-badge.active {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--ak-cyan);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+}
+
+.status-badge.upcoming {
+  background: rgba(255, 222, 0, 0.15);
+  color: var(--ak-gold);
+  border: 1px solid rgba(255, 222, 0, 0.4);
+}
+
+.proker-title {
+  font-family: var(--font-title);
+  font-size: 1.25rem;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.6rem;
+  line-height: 1.3;
+}
+
+.proker-desc {
+  font-size: 0.88rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+}
+
+.proker-meta-box {
+  background: rgba(14, 20, 31, 0.6);
+  border: 1px solid var(--ak-border);
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.proker-meta-box .row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.proker-meta-box .k {
+  color: var(--ak-text-dim);
+}
+
+.proker-meta-box .v {
+  color: var(--ak-text-primary);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   INTEL & NEWS FEED
+   -------------------------------------------------------------------------- */
+.news-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 2rem;
+}
+
+.news-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  clip-path: var(--clip-corner-top-right);
+  overflow: hidden;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.news-card:hover {
+  border-color: var(--ak-cyan);
+  transform: translateY(-4px);
+}
+
+.news-thumb-wrap {
+  height: 200px;
+  position: relative;
+  overflow: hidden;
+}
+
+.news-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-normal);
+}
+
+.news-card:hover .news-thumb {
+  transform: scale(1.05);
+}
+
+.news-tag {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  padding: 0.25rem 0.65rem;
+  background: rgba(11, 15, 23, 0.9);
+  border: 1px solid var(--ak-cyan);
+  color: var(--ak-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  clip-path: var(--clip-badge);
+}
+
+.news-content {
+  padding: 1.5rem;
+}
+
+.news-date {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ak-text-dim);
+  margin-bottom: 0.5rem;
+}
+
+.news-title {
+  font-family: var(--font-title);
+  font-size: 1.25rem;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.75rem;
+  line-height: 1.35;
+}
+
+.news-excerpt {
+  font-size: 0.88rem;
+  color: var(--ak-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+/* --------------------------------------------------------------------------
+   COMM-LINK & ASPIRASI MAHASISWA
+   -------------------------------------------------------------------------- */
+.comm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  margin-top: 2rem;
+}
+
+.aspirasi-form-panel {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 2rem;
+  clip-path: var(--clip-corner-top-right);
+  position: relative;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ak-text-secondary);
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.06em;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(11, 15, 23, 0.85);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  border-radius: 2px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: var(--ak-cyan);
+  box-shadow: 0 0 10px var(--ak-cyan-glow);
+}
+
+.form-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.auth-feedback {
+  min-height: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--ak-gold);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.admin-section {
+  padding-block: 1.25rem;
+  border-top: 1px solid var(--ak-border);
+}
+
+.admin-section h3 {
+  margin-bottom: 0.85rem;
+  color: var(--ak-cyan);
+  font-family: var(--font-title);
+  font-size: 0.95rem;
+}
+
+.admin-record-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+  color: var(--ak-text-secondary);
+  font-size: 0.82rem;
+}
+
+.admin-record-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--ak-border);
+  padding-bottom: 0.5rem;
+}
+
+.admin-record-row small {
+  display: block;
+  color: var(--ak-text-dim);
+}
+
+.admin-form,
+.admin-user-form {
+  display: grid;
+  gap: 0.65rem;
+  padding-block: 0.9rem;
+  border-top: 1px solid rgba(45, 62, 90, 0.5);
+}
+
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.7rem;
+}
+
+#logout-action-btn[hidden] {
+  display: none;
+}
+
+.contact-info-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.contact-card {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  padding: 1.5rem;
+  clip-path: var(--clip-corner-top-right);
+}
+
+.contact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.contact-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--ak-cyan-subtle);
+  border: 1px solid var(--ak-cyan);
+  color: var(--ak-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  clip-path: var(--clip-badge);
+  font-size: 1rem;
+}
+
+.contact-text h4 {
+  font-family: var(--font-title);
+  font-size: 1rem;
+  color: var(--ak-text-primary);
+  margin-bottom: 0.2rem;
+}
+
+.contact-text p {
+  font-size: 0.85rem;
+  color: var(--ak-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   MODAL SYSTEM
+   -------------------------------------------------------------------------- */
+.prts-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 9, 14, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.prts-modal-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.prts-modal {
+  background: var(--ak-bg-panel);
+  border: 1px solid var(--ak-border);
+  width: 100%;
+  max-width: 760px;
+  max-height: 90vh;
+  overflow-y: auto;
+  clip-path: var(--clip-cut-corner);
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.9),
+    0 0 30px var(--ak-cyan-glow);
+  transform: scale(0.95);
+  transition: transform var(--transition-normal);
+  position: relative;
+}
+
+.prts-modal-backdrop.active .prts-modal {
+  transform: scale(1);
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  background: rgba(11, 15, 23, 0.95);
+  border-bottom: 1px solid var(--ak-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-family: var(--font-title);
+  font-size: 1.35rem;
+  color: var(--ak-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-secondary);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  clip-path: var(--clip-badge);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.modal-close-btn:hover {
+  background: var(--ak-red);
+  color: #fff;
+  border-color: var(--ak-red);
+}
+
+.modal-body {
+  padding: 2rem;
+}
+
+/* --------------------------------------------------------------------------
+   RESPONSIVE DESIGN BREAKPOINTS
+   -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .hero-container {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .comm-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: 2.3rem;
+  }
+
+  .hero-stats-hud {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .visi-misi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-grid {
+    gap: 2px;
+  }
+
+  .cal-cell {
+    min-height: 64px;
+    padding: 0.2rem;
+  }
+}
