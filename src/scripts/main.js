@@ -624,6 +624,7 @@ class PRTSApplication {
             <div class="workspace-dashboard-actions">
               <button type="button" class="btn-tactical primary" data-workspace-view="studio">BUKA SITE STUDIO</button>
               <button type="button" class="btn-tactical" data-workspace-view="operations">LIHAT OPERASIONAL</button>
+              <button type="button" class="btn-tactical" data-workspace-view="academic">PUSAT AKADEMIK</button>
             </div>
           </div>
           <div class="workspace-dashboard-health" data-dashboard-health role="status">MEMUAT DATA PORTAL...</div>
@@ -631,12 +632,14 @@ class PRTSApplication {
         <section class="workspace-dashboard-metrics" aria-label="Ringkasan portal" data-dashboard-metrics>
           <p role="status">Memuat ringkasan portal...</p>
         </section>
-        <section class="workspace-dashboard-panel workspace-system-statistics" aria-labelledby="workspace-system-stats-title">
+        <section class="workspace-action-center" aria-labelledby="workspace-action-center-title">
           <div class="workspace-panel-heading">
-            <div><span class="section-tag cyan">DATA ADMINISTRATIF</span><h2 id="workspace-system-stats-title">Statistik organisasi</h2></div>
-            <span class="workspace-panel-note">API // ADMIN</span>
+            <div><span class="section-tag gold">TINDAK LANJUT</span><h2 id="workspace-action-center-title">Pusat tindakan</h2></div>
+            <span class="workspace-panel-note">ANTREAN ADMIN</span>
           </div>
-          <div class="workspace-system-stats-grid" data-dashboard-system-stats role="status">Memuat statistik organisasi...</div>
+          <div class="workspace-action-list" data-dashboard-actions aria-live="polite">
+            <p role="status">Memuat antrean tindakan...</p>
+          </div>
         </section>
         <div class="workspace-dashboard-grid">
           <section class="workspace-dashboard-panel" aria-labelledby="workspace-activity-title">
@@ -655,6 +658,13 @@ class PRTSApplication {
             <button type="button" class="workspace-text-action" data-workspace-view="operations">BUKA PENGELOLAAN AGENDA <span aria-hidden="true">→</span></button>
           </section>
         </div>
+        <section class="workspace-dashboard-panel workspace-system-statistics" aria-labelledby="workspace-system-stats-title">
+          <div class="workspace-panel-heading">
+            <div><span class="section-tag cyan">DATA ADMINISTRATIF</span><h2 id="workspace-system-stats-title">Statistik organisasi</h2></div>
+            <span class="workspace-panel-note">API // ADMIN</span>
+          </div>
+          <div class="workspace-system-stats-grid" data-dashboard-system-stats role="status">Memuat statistik organisasi...</div>
+        </section>
         <section class="workspace-section workspace-service-section" aria-labelledby="workspace-services-title">
           <div class="workspace-panel-heading">
             <div><span class="section-tag cyan">MODUL ADMINISTRATOR</span><h2 id="workspace-services-title">Layanan dalam kendali Anda</h2></div>
@@ -664,7 +674,8 @@ class PRTSApplication {
             ${[
             { title: 'Site Studio', description: 'Tema, halaman, media, playlist, dan konten portal.', status: 'PENGELOLAAN SITUS', destination: 'studio', tone: 'cyan' },
             { title: 'Operasional organisasi', description: 'Program kerja, tugas, agenda, dan layanan anggota.', status: 'OPERASIONAL', destination: 'operations', tone: 'green' },
-            { title: 'Showcase & karier', description: 'Tinjau karya, profil alumni, serta kesempatan kerja.', status: 'KURASI KONTEN', destination: 'studio', tone: 'gold' }
+            { title: 'Pusat Akademik', description: 'Kelola sumber belajar, jalur pembelajaran, dan moderasi diskusi.', status: 'AKADEMIK', destination: 'academic', tone: 'gold' },
+            { title: 'Notifikasi', description: 'Kirim pengumuman dan tinjau pesan untuk anggota.', status: 'KOMUNIKASI', destination: 'notifications', tone: 'violet' }
           ].map((service) => `
               <button type="button" class="workspace-service-item workspace-tone-${escapeHtml(service.tone)}" data-workspace-view="${escapeHtml(service.destination)}">
                 <span class="workspace-service-status">${escapeHtml(service.status)}</span>
@@ -1269,11 +1280,12 @@ class PRTSApplication {
 
   async loadSuperadminDashboard(content) {
     const metrics = content.querySelector('[data-dashboard-metrics]');
+    const actions = content.querySelector('[data-dashboard-actions]');
     const activity = content.querySelector('[data-dashboard-activity]');
     const agenda = content.querySelector('[data-dashboard-agenda]');
     const health = content.querySelector('[data-dashboard-health]');
     const systemStatsContainer = content.querySelector('[data-dashboard-system-stats]');
-    if (!metrics || !activity || !agenda || !health || !systemStatsContainer) return;
+    if (!metrics || !actions || !activity || !agenda || !health || !systemStatsContainer) return;
 
     const requests = await Promise.all([
       this.api.getAllUsers(),
@@ -1346,6 +1358,43 @@ class PRTSApplication {
         <span>${escapeHtml(metric.label)}</span><strong>${escapeHtml(metric.value)}</strong><small>${escapeHtml(metric.detail)}</small>
       </article>
     `).join('');
+
+    const actionItems = [
+      {
+        title: 'Review konten',
+        count: missingRecordCollection ? null : pendingReview,
+        detail: missingRecordCollection ? 'Data pengajuan belum tersedia' : 'Pengajuan konten menunggu keputusan',
+        tone: 'gold'
+      },
+      {
+        title: 'Tugas organisasi',
+        count: tasks === null ? null : openTasks.length,
+        detail: tasks === null ? sourceError(tasksResult, tasks) : `${overdueTasks.length} melewati tenggat`,
+        tone: overdueTasks.length ? 'red' : 'green'
+      },
+      {
+        title: 'Moderasi diskusi',
+        count: discussions === null ? null : discussions.length,
+        detail: discussions === null ? sourceError(discussionsResult, discussions) : 'Pembahasan akademik menunggu tinjauan',
+        tone: 'cyan'
+      },
+      {
+        title: 'Klinik Koding',
+        count: tutoring === null ? null : tutoring.filter((request) => request.status === 'Diterima').length,
+        detail: tutoring === null ? sourceError(tutoringResult, tutoring) : 'Permintaan diterima, menunggu penjadwalan',
+        tone: 'gold'
+      }
+    ].filter((item) => item.count === null || item.count > 0);
+    actions.innerHTML = actionItems.length ? actionItems.map((item) => `
+      <button type="button" class="workspace-action-item workspace-tone-${item.tone}" data-workspace-view="operations">
+        <span class="workspace-action-count">${item.count === null ? '—' : escapeHtml(item.count)}</span>
+        <span class="workspace-action-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span>
+        <span class="workspace-action-arrow" aria-hidden="true">↗</span>
+      </button>
+    `).join('') : '<p class="workspace-action-empty">Tidak ada antrean prioritas. Seluruh tindak lanjut utama sudah terkendali.</p>';
+    actions.querySelectorAll('[data-workspace-view]').forEach((button) => {
+      button.addEventListener('click', () => this.openWorkspace(button.dataset.workspaceView));
+    });
 
     if (!systemStats) {
       const error = systemStatsResult.ok ? 'Format statistik dari server tidak sesuai' : systemStatsResult.error;
@@ -1450,7 +1499,10 @@ class PRTSApplication {
         </div>
         <div class="form-group">
           <label class="form-label" for="login-password">PASSWORD</label>
-          <input class="form-input" id="login-password" name="password" type="password" autocomplete="current-password" required />
+          <div class="password-field">
+            <input class="form-input" id="login-password" name="password" type="password" autocomplete="current-password" required />
+            <button class="password-visibility-toggle" type="button" data-password-visibility aria-controls="login-password" aria-label="Tampilkan password" aria-pressed="false">TAMPILKAN</button>
+          </div>
         </div>
         <p id="login-feedback" class="auth-feedback" role="status" aria-live="polite">${escapeHtml(initialFeedback)}</p>
         <button class="btn-tactical primary" type="submit">MASUK KE TERMINAL</button>
@@ -1461,6 +1513,16 @@ class PRTSApplication {
 
     initSso(document.getElementById('sso-buttons'), {
       onOpenDevMock: () => this.openDevMockSsoDialog()
+    });
+
+    const passwordInput = document.getElementById('login-password');
+    const passwordToggle = document.querySelector('[data-password-visibility]');
+    passwordToggle?.addEventListener('click', () => {
+      const isVisible = passwordInput.type === 'text';
+      passwordInput.type = isVisible ? 'password' : 'text';
+      passwordToggle.setAttribute('aria-pressed', String(!isVisible));
+      passwordToggle.setAttribute('aria-label', isVisible ? 'Tampilkan password' : 'Sembunyikan password');
+      passwordToggle.textContent = isVisible ? 'TAMPILKAN' : 'SEMBUNYIKAN';
     });
 
     document.getElementById('login-form').addEventListener('submit', async (event) => {

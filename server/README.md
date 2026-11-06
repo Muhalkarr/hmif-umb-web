@@ -28,6 +28,18 @@ Alur singkat:
 
 `JWT_SECRET` menandatangani cookie sesi. Secret itu **bukan** password login. Mengisi `JWT_SECRET` tidak mengubah password akun.
 
+Setiap akun memiliki `account_id` internal yang permanen; NIM hanya menjadi identitas login yang dapat diganti secara unik. Perubahan NIM melalui `PUT /api/auth/profile` mencabut semua sesi akun, sementara histori presensi/evaluasi dan profil angkatan yang ditautkan secara eksplisit tetap mengikuti akun tersebut. Sesi lama bermigrasi ke ID internal saat digunakan.
+
+Respons publik `GET /api/site/config` tidak menyertakan NIM atau ID akun internal. Preview draft Site Studio tetap menyertakan data lengkap dan hanya tersedia bagi superadmin.
+
+Pusat Akademik memakai capability akun `academic_curate`, yang hanya dapat diberikan/dicabut superadmin. Capability ini memberi akses ke workspace akademik dan unggah PDF milik sendiri; tidak memberi akses Site Studio, pengguna, backup, atau operasional organisasi. Resource dan learning path tersimpan sebagai draft, diajukan untuk review, lalu hanya superadmin yang dapat menerbitkan/menolak. Thread diskusi dimoderasi; satu jawaban/alternatif terbit dapat dipilih sebagai solusi. Seed lama tetap fixture demo.
+
+Matchmaking Klinik Koding menggunakan slot pilihan mahasiswa dan keahlian/jadwal tutor untuk memberi rekomendasi. Pengurus tetap memilih tutor dan mengonfirmasi sesi; server memeriksa kecocokan durasi, ketersediaan, benturan, dan mode. Tautan online hanya divalidasi sebagai HTTPS; pembuatan Google Meet tidak terintegrasi.
+
+Pemilik akun dapat mengunggah avatar gambar melalui `POST /api/auth/profile/avatar` (PNG/JPEG/WebP, maksimal 5 MB). File avatar hanya dapat dibaca oleh pemilik akun dan administrator, serta tidak dapat dihapus selama masih dipakai profil.
+
+Empat kursi BPH menggunakan `bphRoleId` stabil (`kahim`, `wakahim`, `sekum`, `bendum`). Site Studio mengisi ID ini pada data lama saat membuka draft; perubahan teks jabatan tidak memengaruhi penetapan atau pelepasan kursi.
+
 ---
 
 ## 2. Persiapan satu kali (lokal)
@@ -228,12 +240,17 @@ Jika `database.json` tidak dipindah, menghapus SQLite saja akan mengimpor JSON l
 | `NODE_ENV` | Disarankan | `development` lokal; `production` di server. |
 | `PORT` | Tidak | Port API. Default `3001`. |
 | `JWT_SECRET` | Ya | Minimal 32 byte acak. Dipakai menandatangani cookie. |
+| `ASPIRATION_ENCRYPTION_KEY` | Disarankan | Secret stabil minimal 32 byte untuk AES-256-GCM isi aspirasi/tanggapan. Jika kosong, diturunkan dari `JWT_SECRET`; jangan rotasi selama ada aspirasi terenkripsi. |
+| `ASPIRATION_ENCRYPTION_KEY` | Disarankan | Secret stabil minimal 32 byte untuk AES-256-GCM isi aspirasi/tanggapan. Jika kosong, diturunkan dari `JWT_SECRET`; jangan rotasi selama ada aspirasi terenkripsi. |
 | `FRONTEND_ORIGINS` | Ya di production | Daftar origin frontend, dipisah koma. Mutasi (POST/PUT/PATCH/DELETE) ditolak jika `Origin` tidak ada di daftar. Lokal default: `http://localhost:5173,http://127.0.0.1:5173`. Buka situs lewat origin yang sama. |
 | `ALLOW_PUBLIC_REGISTRATION` | Tidak | Default mati. User baru publik tidak bisa daftar sendiri. |
 | `INITIAL_ADMIN_NIM` | Saat seed database baru | ID superadmin awal. |
 | `INITIAL_ADMIN_PASSWORD` | Saat seed database baru | Password superadmin awal, min. 16 karakter. |
 | `DATABASE_FILE` | Production | Path absolut file SQLite persisten **di luar** workspace. |
 | `ASSET_STORAGE_DIR` | Production | Path absolut folder aset privat persisten. |
+| `EVENT_TICKET_ENCRYPTION_KEY` | Opsional | Secret stabil minimal 32 byte untuk mengenkripsi token QR yang dapat dipulihkan dari dashboard. Jika kosong, kunci diturunkan dari `JWT_SECRET`; jangan rotasi selama tiket terkait masih berlaku. |
+| `RESEND_API_KEY` | Opsional | API key Resend untuk mengirim e-ticket berisi attachment QR. Jika tidak tersedia, peserta tetap mendapat tiket di browser; anggota login juga dapat membukanya kembali dari dashboard. |
+| `EVENT_EMAIL_FROM` | Opsional | Alamat pengirim terverifikasi di Resend, misalnya `HMIF Events <events@domain-anda>`. Digunakan bersama `RESEND_API_KEY`. |
 
 Pendaftaran publik mati secara default. User baru yang dibuat admin selalu ber-role `member` dan clearance 1, kecuali superadmin mengubah role.
 
@@ -254,6 +271,12 @@ Perubahan role, konten administratif, upload aset, draft, publish, restore, dan 
 Site Studio: tema (warna, font, skala, bentuk, ikon, latar, kontras, motion), page builder (urutan/visibilitas/layout blok terdaftar), koleksi data terstruktur. Draft bisa dipratinjau, dipublikasikan, dan dipulihkan. Setiap simpan memakai revision ID untuk konflik editor bersamaan.
 
 Upload: maksimal 5 MB; gambar PNG/JPEG/WebP dan font WOFF2/TTF/OTF; tipe dan signature dicek. SVG dan markup aktif ditolak. Aset yang masih direferensikan versi mana pun tidak bisa dihapus (untuk rollback). Backup JSON admin mencakup data aplikasi, konfigurasi, revision, metadata aset, dan audit; file binary di `ASSET_STORAGE_DIR` perlu backup terpisah.
+
+Knowledge Base menerima tautan HTTPS atau PDF terkurasi. Upload PDF hanya untuk superadmin, maksimal 20 MB, dan signature file diperiksa. PDF baru dapat diunduh publik jika resource dan revision situs sudah diterbitkan; PDF draft tetap privat. Resource bank soal memiliki thread diskusi: anggota login dapat mengirim komentar yang menunggu moderasi clearance 2+, penulis dapat melihat komentar pending miliknya, dan hanya komentar yang diterbitkan terlihat publik.
+
+Klinik Koding: anggota login dapat mengajukan bimbingan dengan batas 3 permintaan per jam dan melihat statusnya sendiri. Pengurus clearance 2+ dapat melihat antrean serta menjadwalkan tutor anggota clearance 2+ secara manual; sesi online wajib menggunakan HTTPS, sedangkan sesi luring harus mencantumkan lokasi. Tautan dan catatan sesi hanya dikirim ke pemohon serta pengurus.
+
+Backup admin memuat metadata PDF, thread diskusi, dan permintaan tutoring; file biner PDF di `ASSET_STORAGE_DIR/knowledge/` harus ikut dicadangkan.
 
 SQLite cocok untuk satu host kecil. Jangan membagi file SQLite lewat network filesystem. Untuk banyak instance, pindah ke database transaksional terkelola dan object storage.
 
