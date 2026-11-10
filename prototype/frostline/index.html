@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eaf3f2">
+  <meta name="description" content="Konsep antarmuka Portal Himpunan Mahasiswa Informatika Universitas Mayasari Bakti.">
+  <title>HMIF UMB — Frostline Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="topline"><span>UMB / FAKULTAS TEKNOLOGI INFORMASI & KOMUNIKASI</span><span>PORTAL ORGANISASI <b>● ONLINE</b></span></div>
+  <header class="site-header">
+    <a class="brand" href="#home" aria-label="HMIF UMB beranda">
+      <span class="brand-mark"><i></i><i></i><i></i><b>H</b></span>
+      <span class="brand-copy"><strong>HMIF<span>UMB</span></strong><small>HIMPUNAN MAHASISWA INFORMATIKA</small></span>
+    </a>
+    <button class="mobile-menu" id="mobile-menu" aria-label="Buka navigasi">☰</button>
+    <nav class="main-nav" id="main-nav" aria-label="Navigasi utama">
+      <a class="active" href="#home" data-scroll="home">BERANDA</a>
+      <a href="#organization" data-scroll="organization">ORGANISASI</a>
+      <a href="#programs" data-scroll="programs">PROGRAM KERJA</a>
+      <a href="#agenda" data-scroll="agenda">AGENDA</a>
+      <a href="#resources" data-scroll="resources">RUANG AKADEMIK</a>
+    </nav>
+    <div class="header-actions">
+      <span class="live-clock" id="clock">--:-- WIB</span>
+      <button class="btn btn-dark btn-small" id="open-login">PORTAL PENGURUS <span>↗</span></button>
+    </div>
+  </header>
+
+  <main id="public-view">
+    <section class="hero section-grid" id="home">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-line"></span> RUANG TUMBUH / INFORMATIKA <span class="eyebrow-code">HMIF—01</span></div>
+        <h1>Menggerakkan<br><em>ide.</em> Membangun<br>masa depan<span class="red-dot">.</span></h1>
+        <p class="hero-lead">Satu ruang untuk berkolaborasi, bertumbuh, dan menciptakan dampak. Menghubungkan mahasiswa informatika melalui pengetahuan, karya, dan gerakan organisasi.</p>
+        <div class="hero-actions">
+          <a href="#organization" class="btn btn-primary">JELAJAHI HMIF <span>↗</span></a>
+          <a href="#programs" class="text-link">LIHAT PROGRAM KERJA <span>→</span></a>
+        </div>
+        <div class="hero-footnote"><span class="small-cross">＋</span> UNIVERSITAS MAYASARI BAKTI <span class="divider-dot">/</span> TASIKMALAYA, INDONESIA</div>
+      </div>
+      <div class="hero-visual" aria-label="Ilustrasi abstrak jaringan dan sistem digital">
+        <div class="visual-meta"><span>FIG. 01 / THE COLLECTIVE</span><span>6.866° S / 108.220° E</span></div>
+        <div class="visual-grid"></div>
+        <svg class="hero-geometry" viewBox="0 0 660 590" role="img" aria-label="Ilustrasi geometris abstrak">
+          <defs>
+            <linearGradient id="ice" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#faffff"/><stop offset="1" stop-color="#b9d5d8"/></linearGradient>
+            <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d2e5e5"/><stop offset="1" stop-color="#78969a"/></linearGradient>
+            <pattern id="dots" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#729094" opacity=".36"/></pattern>
+          </defs>
+          <circle cx="342" cy="292" r="222" fill="none" stroke="#aec7c9" stroke-width="1" stroke-dasharray="2 9"/>
+          <circle cx="342" cy="292" r="170" fill="none" stroke="#9db7ba" stroke-width="1"/>
+          <path d="M100 348 L222 166 L384 92 L548 226 L488 442 L304 502 Z" fill="url(#ice)" stroke="#a2bec1" stroke-width="1.4"/>
+          <path d="M222 166 L384 92 L384 258 L222 340 Z" fill="#e7f2f2" stroke="#a2bec1"/>
+          <path d="M384 92 L548 226 L488 442 L384 258 Z" fill="url(#stone)" opacity=".78" stroke="#91afb2"/>
+          <path d="M222 340 L384 258 L488 442 L304 502 Z" fill="#c2d9db" stroke="#91afb2"/>
+          <path d="M100 348 L222 166 L222 340 L304 502 Z" fill="#edf7f7" stroke="#a2bec1"/>
+          <path d="M222 166 L384 92 L384 258 L304 338 Z" fill="url(#dots)" opacity=".9"/>
+          <path d="M384 258 L488 442 L304 502 L304 338 Z" fill="url(#dots)" opacity=".7"/>
+          <g fill="#f8ffff" stroke="#91adb0" stroke-width="1.2">
+            <path d="M282 208 l56 -31 56 31 -56 32z"/><path d="M282 208v74l56 33v-75z" fill="#d9e9e9"/><path d="M394 208v74l-56 33v-75z" fill="#b8d0d2"/>
+            <path d="M143 355 l38 -22 37 22 -38 22z"/><path d="M143 355v49l37 22v-49z" fill="#dcebec"/><path d="M218 355v49l-38 22v-49z" fill="#b7ced0"/>
+            <path d="M432 333 l35 -20 35 20 -35 20z"/><path d="M432 333v45l35 20v-45z" fill="#dcebec"/><path d="M502 333v45l-35 20v-45z" fill="#9fbabd"/>
+          </g>
+          <g stroke="#b02f33" stroke-width="2" fill="none"><path d="M338 240v-74l44-25"/><path d="M338 315v70l-70 40"/><circle cx="382" cy="141" r="5" fill="#b02f33"/><circle cx="268" cy="425" r="5" fill="#b02f33"/></g>
+          <g fill="#66868a" font-family="monospace" font-size="10"><text x="65" y="112">STRUCTURE / 001</text><text x="477" y="520">NETWORK / 024</text><text x="310" y="555">UMB · EST. 20XX</text></g>
+        </svg>
+        <div class="visual-stamp"><span>EST.</span><strong>HMIF</strong><small>COLLECTIVE<br>INTELLIGENCE</small></div>
+        <div class="visual-index">001 <i></i> 004</div>
+      </div>
+      <div class="hero-bottom">
+        <div class="hero-note"><span class="note-number">01</span><span><b>LEARN</b><small>Pengetahuan sebagai fondasi</small></span></div>
+        <div class="hero-note"><span class="note-number">02</span><span><b>BUILD</b><small>Karya sebagai bukti gagasan</small></span></div>
+        <div class="hero-note"><span class="note-number">03</span><span><b>CONNECT</b><small>Kolaborasi sebagai kekuatan</small></span></div>
+        <div class="hero-scroll">SCROLL TO EXPLORE <span>↓</span></div>
+      </div>
+    </section>
+
+    <section class="ticker" aria-label="Pengumuman"><div class="ticker-label">TRANSMISI TERBARU <span>●</span></div><div class="ticker-track"><span>OPEN CALL — KOLABORASI & KARYA MAHASISWA</span><i>✳</i><span>PORTAL HMIF / INFORMASI ORGANISASI</span><i>✳</i><span>GROW TOGETHER, BUILD WITH PURPOSE</span></div></section>
+
+    <section class="section content-section" id="organization">
+      <div class="section-heading">
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> IDENTITY / 01</div><h2>Satu himpunan.<br><em>Banyak kemungkinan.</em></h2></div>
+        <p>HMIF menjadi ruang kolaborasi mahasiswa informatika untuk mengembangkan kapasitas akademik, profesional, dan sosial melalui tata kelola organisasi yang terbuka dan berkelanjutan.</p>
+      </div>
+      <div class="identity-layout">
+        <div class="identity-art">
+          <div class="art-top"><span>ORGANIZATION MAP</span><span>NOT TO SCALE</span></div>
+          <svg viewBox="0 0 720 450" role="img" aria-label="Peta konseptual ekosistem organisasi">
+            <defs><pattern id="mapDots" width="15" height="15" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.4" fill="#829fa2" opacity=".45"/></pattern></defs>
+            <path d="M90 222 L151 133 L266 91 L341 123 L431 72 L541 127 L624 201 L568 286 L493 325 L407 363 L293 340 L214 372 L119 313 Z" fill="#d6e8e9" stroke="#91afb2" stroke-width="2"/>
+            <path d="M90 222 L151 133 L266 91 L341 123 L431 72 L541 127 L624 201 L568 286 L493 325 L407 363 L293 340 L214 372 L119 313 Z" fill="url(#mapDots)"/>
+            <g fill="none" stroke="#9db8ba" stroke-width="1.5"><path d="M151 133 L266 209 L341 123 L431 72"/><path d="M266 209 L407 363 L493 325 L541 127"/><path d="M266 209 L119 313"/><path d="M266 209 L568 286"/><path d="M341 123 L407 363"/><path d="M431 72 L568 286"/></g>
+            <g fill="#fff" stroke="#7d999d" stroke-width="2"><circle cx="266" cy="209" r="10"/><circle cx="151" cy="133" r="7"/><circle cx="431" cy="72" r="7"/><circle cx="541" cy="127" r="7"/><circle cx="493" cy="325" r="7"/><circle cx="214" cy="372" r="7"/></g>
+            <g fill="#af3438"><circle cx="266" cy="209" r="4"/><circle cx="431" cy="72" r="3"/><circle cx="493" cy="325" r="3"/></g>
+            <g font-family="monospace" fill="#536f73" font-size="11"><text x="282" y="202">CORE / HMIF</text><text x="91" y="116">ACADEMIC</text><text x="435" y="52">CREATIVE</text><text x="553" y="120">COMMUNITY</text><text x="500" y="350">CAREER</text></g>
+          </svg>
+          <div class="map-caption"><span>FIG 02 — CONNECTED KNOWLEDGE NETWORK</span><span>◎ 06 NODES</span></div>
+        </div>
+        <div class="identity-side">
+          <div class="identity-kicker">OUR PRINCIPLES / 03</div>
+          <article class="principle"><span>01</span><div><h3>Inklusif & kolaboratif</h3><p>Setiap mahasiswa mempunyai ruang untuk berkontribusi, belajar, dan menyampaikan gagasan.</p></div><b>↗</b></article>
+          <article class="principle"><span>02</span><div><h3>Berbasis pengetahuan</h3><p>Keputusan, program, dan pengembangan organisasi bertumpu pada informasi yang dapat ditelusuri.</p></div><b>↗</b></article>
+          <article class="principle"><span>03</span><div><h3>Berkelanjutan</h3><p>Dokumentasi dan serah terima menjaga memori organisasi lintas periode kepengurusan.</p></div><b>↗</b></article>
+          <a class="text-link" href="#programs">PELAJARI ARAH GERAK HMIF <span>→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section programs-section" id="programs">
+      <div class="section-heading compact">
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> INITIATIVES / 02</div><h2>Gagasan menjadi<br><em>gerakan nyata.</em></h2></div>
+        <div class="section-side-note">PROGRAM KERJA<br><b>PERIODE 2026 / 2027</b></div>
+      </div>
+      <div class="program-toolbar"><span>PILIH AREA PENGEMBANGAN</span><div class="filter-tabs" role="group" aria-label="Filter program"><button class="filter-btn active" data-filter="all">SEMUA</button><button class="filter-btn" data-filter="akademik">AKADEMIK</button><button class="filter-btn" data-filter="internal">INTERNAL</button><button class="filter-btn" data-filter="eksternal">EKSTERNAL</button></div></div>
+      <div class="program-grid" id="program-grid">
+        <article class="program-card" data-category="akademik"><div class="program-top"><span>01 / KNOWLEDGE</span><span class="program-status">ONGOING</span></div><div class="program-graphic graphic-code"><b>0101</b><i>&lt;/&gt;</i><small>LEARN / SHARE / REPEAT</small></div><div class="program-content"><div class="program-label">AKADEMIK & RISET</div><h3>Informatics Learning Lab</h3><p>Ruang belajar bersama untuk membangun fondasi teknis, eksplorasi riset, dan praktik pemecahan masalah.</p><a href="#agenda">DETAIL PROGRAM <span>↗</span></a></div></article>
+        <article class="program-card" data-category="internal"><div class="program-top"><span>02 / CAPACITY</span><span class="program-status">PLANNED</span></div><div class="program-graphic graphic-people"><div class="node n1">H</div><div class="node n2">I</div><div class="node n3">F</div><div class="node n4">M</div><small>PEOPLE / PROCESS / PURPOSE</small></div><div class="program-content"><div class="program-label">PENGEMBANGAN INTERNAL</div><h3>Leadership & Organization</h3><p>Penguatan kader, kapasitas kepemimpinan, manajemen kerja, dan regenerasi organisasi.</p><a href="#agenda">DETAIL PROGRAM <span>↗</span></a></div></article>
+        <article class="program-card" data-category="eksternal"><div class="program-top"><span>03 / COMMUNITY</span><span class="program-status">OPEN</span></div><div class="program-graphic graphic-community"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit-core">∞</div><small>CONNECT / CONTRIBUTE / GROW</small></div><div class="program-content"><div class="program-label">PENGABDIAN & KOLABORASI</div><h3>Tech for Community</h3><p>Menghubungkan teknologi dengan kebutuhan masyarakat melalui kolaborasi dan proyek berdampak.</p><a href="#agenda">DETAIL PROGRAM <span>↗</span></a></div></article>
+      </div>
+      <div class="section-endline"><span>03 INITIATIVES DISPLAYED</span><a href="#agenda">LIHAT SELURUH AGENDA ↗</a></div>
+    </section>
+
+    <section class="section agenda-section" id="agenda">
+      <div class="section-heading compact">
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> UPDATES / 03</div><h2>Ruang gerak<br><em>minggu ini.</em></h2></div>
+        <p class="agenda-intro">Informasi dan agenda organisasi dalam satu tampilan. Data berikut merupakan contoh prototipe, bukan jadwal resmi.</p>
+      </div>
+      <div class="agenda-layout">
+        <div class="featured-news">
+          <div class="news-image"><div class="news-coordinate">HMIF / FIELD NOTES / 026</div><div class="news-art"><span>IDEA</span><b>LAB</b><i>✳</i><small>BUILD THE<br>FUTURE</small></div><div class="news-image-foot"><span>FEATURED / 001</span><span>↗</span></div></div>
+          <div class="news-caption"><div><span class="program-label">CERITA KAMPUS / 08 NOVEMBER 2026</span><h3>Ruang kolaborasi untuk karya yang berdampak</h3></div><a href="#resources" aria-label="Baca artikel">↗</a></div>
+        </div>
+        <div class="agenda-list-wrap"><div class="agenda-list-head"><b>AGENDA TERDEKAT</b><span>LOCAL TIME / WIB</span></div>
+          <div class="agenda-list" id="agenda-list">
+            <article class="agenda-item"><div class="datebox"><b>12</b><small>NOV</small></div><div class="agenda-item-copy"><span>AKADEMIK / WORKSHOP</span><h3>Dasar Pengembangan Web</h3><small>Lab Komputer · 13.00 WIB</small></div><span class="agenda-arrow">↗</span></article>
+            <article class="agenda-item"><div class="datebox"><b>15</b><small>NOV</small></div><div class="agenda-item-copy"><span>INTERNAL / RAPAT</span><h3>Koordinasi Pengurus</h3><small>Ruang HMIF · 09.00 WIB</small></div><span class="agenda-arrow">↗</span></article>
+            <article class="agenda-item"><div class="datebox"><b>19</b><small>NOV</small></div><div class="agenda-item-copy"><span>EKSTERNAL / KOLABORASI</span><h3>Technology Community Day</h3><small>Aula Kampus · 08.00 WIB</small></div><span class="agenda-arrow">↗</span></article>
+            <article class="agenda-item"><div class="datebox"><b>22</b><small>NOV</small></div><div class="agenda-item-copy"><span>AKADEMIK / DISKUSI</span><h3>Forum Riset Mahasiswa</h3><small>Hybrid · 15.30 WIB</small></div><span class="agenda-arrow">↗</span></article>
+          </div>
+          <button class="btn btn-outline btn-wide" id="agenda-more">BUKA KALENDER LENGKAP <span>↗</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="resources-section" id="resources">
+      <div class="resource-visual"><div class="resource-mark">H<span>M</span>IF</div><div class="resource-orbit"></div><div class="resource-tag">KNOWLEDGE IS A SHARED RESOURCE</div></div>
+      <div class="resource-copy"><div class="eyebrow light"><span class="eyebrow-line"></span> KNOWLEDGE BASE / 04</div><h2>Belajar tidak<br>berhenti di kelas<span>.</span></h2><p>Bangun ekosistem akademik melalui bank materi, diskusi, klinik koding, showcase karya, dan jejaring alumni.</p><div class="resource-links"><a href="#organization"><span>01</span> BANK MATERI & REFERENSI <b>↗</b></a><a href="#organization"><span>02</span> KLINIK KODING <b>↗</b></a><a href="#organization"><span>03</span> SHOWCASE KARYA <b>↗</b></a><a href="#organization"><span>04</span> JEJARING ALUMNI <b>↗</b></a></div></div>
+    </section>
+  </main>
+
+  <main id="workspace-view" class="workspace-view" hidden>
+    <aside class="workspace-sidebar">
+      <div class="workspace-brand"><span class="brand-mark"><i></i><i></i><i></i><b>H</b></span><div><b>HMIF / SPACE</b><small>ORGANIZATION CONSOLE</small></div></div>
+      <div class="workspace-period"><span>ACTIVE PERIOD</span><b>2026 / 2027</b><small>UNIVERSITAS MAYASARI BAKTI</small></div>
+      <div class="sidebar-label">WORKSPACE</div>
+      <button class="workspace-link active" data-workspace="overview"><span>▦</span> Ringkasan <small>01</small></button>
+      <button class="workspace-link" data-workspace="tasks"><span>◷</span> Tugas & Progres <small>02</small></button>
+      <button class="workspace-link" data-workspace="programs"><span>⌘</span> Program Kerja <small>03</small></button>
+      <button class="workspace-link" data-workspace="documents"><span>▤</span> Dokumen & Surat <small>04</small></button>
+      <button class="workspace-link" data-workspace="finance"><span>◈</span> Keuangan <small>05</small></button>
+      <button class="workspace-link" data-workspace="members"><span>◎</span> Anggota <small>06</small></button>
+      <div class="sidebar-label separated">ORGANIZATION</div>
+      <button class="workspace-link" data-workspace="calendar"><span>▦</span> Kalender <small>07</small></button>
+      <button class="workspace-link" data-workspace="archive"><span>▧</span> Arsip Digital <small>08</small></button>
+      <div class="sidebar-bottom"><span class="online-dot"></span> CONNECTION ESTABLISHED<br><small>DEMO ENVIRONMENT / LOCAL DATA</small></div>
+    </aside>
+    <section class="workspace-main">
+      <div class="workspace-topbar"><div><button id="back-public" class="back-public">← KEMBALI KE PORTAL PUBLIK</button><span class="workspace-breadcrumb"> / WORKSPACE / <b id="workspace-crumb">RINGKASAN</b></span></div><div class="workspace-user"><span class="user-avatar">MK</span><span><b id="user-name">Manusa Kharras</b><small id="user-role">KETUA HIMPUNAN</small></span><button id="role-switch" class="role-switch" aria-label="Ganti role demo">⌄</button></div></div>
+      <div class="workspace-content" id="workspace-content">
+        <div class="workspace-welcome"><div><div class="eyebrow"><span class="eyebrow-line"></span> TUESDAY / 10 NOVEMBER 2026</div><h2 id="workspace-greeting">Selamat datang,<br><em>Ketua.</em></h2><p>Berikut ringkasan aktivitas dan hal yang membutuhkan perhatian Anda.</p></div><div class="welcome-actions"><span class="system-chip"><i></i> SYSTEM OPERATIONAL</span><button class="btn btn-dark" id="quick-add">＋ BUAT PENGAJUAN</button></div></div>
+        <div class="metric-grid" id="metric-grid">
+          <article class="metric-card"><div class="metric-label">PROGRAM KERJA AKTIF <span>↗</span></div><strong>08<span>/12</span></strong><small>67% dari target periode</small><div class="metric-bar"><i style="width:67%"></i></div></article>
+          <article class="metric-card"><div class="metric-label">TUGAS SELESAI <span>↗</span></div><strong>24<span>/31</span></strong><small>7 tugas masih berjalan</small><div class="metric-bar"><i style="width:77%"></i></div></article>
+          <article class="metric-card"><div class="metric-label">PENGAJUAN MENUNGGU <span>↗</span></div><strong>04</strong><small>2 membutuhkan tinjauan Anda</small><div class="metric-bar"><i style="width:40%"></i></div></article>
+          <article class="metric-card"><div class="metric-label">ANGGOTA AKTIF <span>↗</span></div><strong>86<span>/104</span></strong><small>Data demo organisasi</small><div class="metric-bar"><i style="width:83%"></i></div></article>
+        </div>
+        <div class="workspace-panels">
+          <section class="panel-card attention-panel"><div class="panel-heading"><div><span class="eyebrow">ATTENTION REQUIRED / 01</span><h3>Perlu ditindaklanjuti</h3></div><span class="counter">04 ITEMS</span></div><div class="attention-list" id="attention-list">
+            <article><span class="attention-icon">↗</span><div><b>Proposal Informatics Learning Lab</b><small>Menunggu persetujuan Ketua · 2 jam lalu</small></div><span class="priority high">TINGGI</span></article>
+            <article><span class="attention-icon">▤</span><div><b>LPJ Workshop UI/UX</b><small>Dokumen perlu dilengkapi · kemarin</small></div><span class="priority medium">SEDANG</span></article>
+            <article><span class="attention-icon">◈</span><div><b>Realisasi anggaran Oktober</b><small>Menunggu verifikasi bendahara</small></div><span class="priority medium">SEDANG</span></article>
+            <article><span class="attention-icon">◷</span><div><b>Rapat koordinasi departemen</b><small>Konfirmasi kehadiran · 12 Nov</small></div><span class="priority low">RENDAH</span></article>
+          </div><button class="panel-footer-link" data-workspace="tasks">LIHAT SELURUH TINDAK LANJUT →</button></section>
+          <section class="panel-card progress-panel"><div class="panel-heading"><div><span class="eyebrow">PERIOD OVERVIEW / 02</span><h3>Progres program kerja</h3></div><button class="tiny-icon" aria-label="Opsi">···</button></div><div class="progress-total"><strong>67%</strong><span>REALISASI PROGRAM</span></div><div class="progress-track"><i></i></div><div class="progress-legend"><span><i class="legend-dot done"></i> Selesai <b>04</b></span><span><i class="legend-dot running"></i> Berjalan <b>04</b></span><span><i class="legend-dot queued"></i> Direncanakan <b>04</b></span></div><div class="progress-foot">PEMBARUAN TERAKHIR <b>10 NOV 2026 · 09.42 WIB</b></div></section>
+        </div>
+        <section class="panel-card task-panel"><div class="panel-heading"><div><span class="eyebrow">WORK QUEUE / 03</span><h3>Aktivitas terbaru</h3></div><a href="#workspace" class="table-link" data-workspace="tasks">BUKA BOARD →</a></div><div class="table-wrap"><table><thead><tr><th>AKTIVITAS</th><th>UNIT</th><th>PIC</th><th>TENGGAT</th><th>STATUS</th></tr></thead><tbody><tr><td><b>Finalisasi proposal seminar</b><small>#PRG-026</small></td><td>Akademik</td><td>R. Aulia</td><td>12 Nov 2026</td><td><span class="table-status review">REVIEW</span></td></tr><tr><td><b>Publikasi agenda bulanan</b><small>#COM-014</small></td><td>Kominfo</td><td>D. Fikri</td><td>13 Nov 2026</td><td><span class="table-status progress">BERJALAN</span></td></tr><tr><td><b>Rekap kebutuhan inventaris</b><small>#LOG-008</small></td><td>Internal</td><td>N. Putri</td><td>16 Nov 2026</td><td><span class="table-status planned">TERJADWAL</span></td></tr></tbody></table></div></section>
+        <div class="workspace-footnote">DEMO DATA / BUKAN DATA RESMI HMIF UMB <span>FROSTLINE PORTAL CONCEPT · BUILD 0.1</span></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="login-modal" hidden>
+    <section class="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <button class="modal-close" id="close-login" aria-label="Tutup">×</button><div class="modal-mark">H</div><div class="eyebrow"><span class="eyebrow-line"></span> SECURE ACCESS / DEMO</div><h2 id="login-title">Masuk ke<br><em>ruang kerja.</em></h2><p>Prototipe ini memakai pemilih peran demo. Autentikasi produksi harus terhubung ke backend dan otorisasi server.</p>
+      <label for="demo-role">SIMULASIKAN POSISI STRUKTURAL</label><select id="demo-role"><option value="chair">Ketua Himpunan</option><option value="vice">Wakil Ketua</option><option value="secretary">Sekretaris</option><option value="treasurer">Bendahara</option><option value="head">Kepala Departemen</option><option value="staff">Staf Departemen</option></select>
+      <button class="btn btn-dark btn-wide" id="enter-demo">MASUK KE WORKSPACE <span>↗</span></button><small class="modal-foot">NO REAL ACCOUNT REQUIRED / DEMO ONLY</small>
+    </section>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <footer class="site-footer"><div class="footer-main"><div class="footer-brand"><span class="brand-mark"><i></i><i></i><i></i><b>H</b></span><span><strong>HMIF<span>UMB</span></strong><small>HIMPUNAN MAHASISWA INFORMATIKA</small></span></div><p>Belajar bersama. Bertumbuh bersama.<br>Membangun masa depan dengan teknologi.</p><div class="footer-nav"><a href="#organization">ORGANISASI</a><a href="#programs">PROGRAM KERJA</a><a href="#agenda">AGENDA</a><a href="#resources">AKADEMIK</a></div></div><div class="footer-bottom"><span>© 2026 HMIF UNIVERSITAS MAYASARI BAKTI · PROTOTIPE</span><span>DESIGNED FOR CONTINUITY <b>✳</b></span></div></footer>
+  <script src="./app.js"></script>
+</body>
+</html>
