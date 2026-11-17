@@ -1,8 +1,8 @@
 import { createRepository } from './createRepository.js';
 
 export const createSiteRepository = (database) => createRepository(database, 'site', [
-  'addAsset', 'addSoundtrack', 'assetExists', 'deleteAsset', 'deleteSoundtrack', 'getAsset',
-  'getSiteRevision', 'getSiteState', 'getSoundtrack', 'isAssetReferencedByRevision',
+  'accountExists', 'addAsset', 'addSoundtrack', 'assetExists', 'deleteAsset', 'deleteSoundtrack', 'getAsset',
+  'getSecurityNotice', 'getSiteRevision', 'getSiteState', 'getSoundtrack', 'isAssetReferencedByRevision',
   'isAssetReferencedByUser', 'listAssets', 'listSiteRevisions', 'listSoundtracks', 'publishSite',
-  'reorderSoundtracks', 'saveSiteDraft', 'updateSoundtrack'
+  'reorderSoundtracks', 'saveSiteDraft', 'setSecurityNotice', 'updateSoundtrack'
 ]);

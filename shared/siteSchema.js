@@ -3,7 +3,9 @@
 export {
   PAGE_BLOCKS,
   BUILTIN_SITE_IMAGES,
+  DEFAULT_LIGHT_THEME_COLORS,
   DEFAULT_SITE_CONFIG,
+  DUST_PERCENT_MAX,
   configReferencesAsset,
   resolveBackgroundImage,
   validateSiteConfig,

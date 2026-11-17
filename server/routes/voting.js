@@ -3,12 +3,18 @@
    ========================================================================== */
 
 export const registerVotingRoutes = (app, ctx) => {
-  const { requireAuth, requireClearance, votingRepository, auditService } = ctx;
+  const { requireAuth, requireCapability, hasCapability, votingRepository, auditAdminMutation, validDate } = ctx;
+  const canManagePolls = (user) => hasCapability(user, 'voting.manage');
+  const validPollInput = ({ title, description = '', start_date, end_date }) => (
+    typeof title === 'string' && title.trim().length > 0 && title.length <= 180
+    && typeof description === 'string' && description.length <= 3000
+    && validDate(start_date) && validDate(end_date) && end_date >= start_date
+  );
 
   // List all polls
   app.get('/api/voting/polls', (req, res) => {
     try {
-      const includeDraft = req.user && req.user.clearance_level >= 3;
+      const includeDraft = canManagePolls(req.user);
       const polls = votingRepository.listPolls(includeDraft);
       res.json({ polls });
     } catch (err) {
@@ -23,6 +29,9 @@ export const registerVotingRoutes = (app, ctx) => {
       if (!poll) {
         return res.status(404).json({ error: 'Pemilihan tidak ditemukan.' });
       }
+      if (poll.status === 'draft' && !canManagePolls(req.user)) {
+        return res.status(404).json({ error: 'Pemilihan tidak ditemukan.' });
+      }
 
       let userVote = null;
       let results = null;
@@ -33,9 +42,9 @@ export const registerVotingRoutes = (app, ctx) => {
 
       const isClosed = poll.status === 'closed';
       const hasVoted = Boolean(userVote);
-      const isAdminOrBph = req.user && req.user.clearance_level >= 3;
+      const canViewResults = hasCapability(req.user, 'voting.manage');
 
-      if (isClosed || hasVoted || isAdminOrBph) {
+      if (isClosed || hasVoted || canViewResults) {
         results = votingRepository.getPollResults(poll.id);
       }
 
@@ -49,28 +58,23 @@ export const registerVotingRoutes = (app, ctx) => {
     }
   });
 
-  // Create poll (Clearance >= 3)
-  app.post('/api/voting/polls', requireAuth, requireClearance(3), (req, res) => {
+  // Create poll (voting.manage)
+  app.post('/api/voting/polls', requireAuth, requireCapability('voting.manage'), (req, res) => {
     try {
-      const { title, description, start_date, end_date, status } = req.body;
-      if (!title || !start_date || !end_date) {
-        return res.status(400).json({ error: 'Judul, tanggal mulai, dan tanggal selesai wajib diisi.' });
+      const { title, description = '', start_date, end_date } = req.body;
+      if (!validPollInput({ title, description, start_date, end_date })) {
+        return res.status(400).json({ error: 'Judul, keterangan, atau rentang tanggal pemilihan tidak valid.' });
       }
 
       const poll = votingRepository.createPoll({
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         start_date,
         end_date,
-        status: status || 'draft'
+        status: 'draft'
       }, req.user.nim);
 
-      auditService?.record?.({
-        actor_nim: req.user.nim,
-        action: 'CREATE_POLL',
-        target: poll.id,
-        details: `Membuat pemilihan: ${title}`
-      });
+      auditAdminMutation(req, 'voting.poll_create', 'voting_poll', poll.id, { title: poll.title });
 
       res.status(201).json({ message: 'Pemilihan berhasil dibuat.', poll });
     } catch (err) {
@@ -78,20 +82,27 @@ export const registerVotingRoutes = (app, ctx) => {
     }
   });
 
-  // Update poll (Clearance >= 3)
-  app.put('/api/voting/polls/:id', requireAuth, requireClearance(3), (req, res) => {
+  // Update poll (voting.manage)
+  app.put('/api/voting/polls/:id', requireAuth, requireCapability('voting.manage'), (req, res) => {
     try {
-      const poll = votingRepository.updatePoll(req.params.id, req.body);
+      const existing = votingRepository.getPoll(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Pemilihan tidak ditemukan.' });
+      const updates = req.body || {};
+      const candidate = {
+        title: updates.title ?? existing.title,
+        description: updates.description ?? existing.description,
+        start_date: updates.start_date ?? existing.start_date,
+        end_date: updates.end_date ?? existing.end_date
+      };
+      if (!validPollInput(candidate) || (updates.status !== undefined && !['draft', 'active', 'closed'].includes(updates.status))) {
+        return res.status(400).json({ error: 'Perubahan pemilihan tidak valid.' });
+      }
+      const poll = votingRepository.updatePoll(req.params.id, updates);
       if (!poll) {
         return res.status(404).json({ error: 'Pemilihan tidak ditemukan.' });
       }
 
-      auditService?.record?.({
-        actor_nim: req.user.nim,
-        action: 'UPDATE_POLL',
-        target: poll.id,
-        details: `Memperbarui pemilihan: ${poll.title}`
-      });
+      auditAdminMutation(req, 'voting.poll_update', 'voting_poll', poll.id, { status: poll.status });
 
       res.json({ message: 'Pemilihan berhasil diperbarui.', poll });
     } catch (err) {
@@ -99,8 +110,8 @@ export const registerVotingRoutes = (app, ctx) => {
     }
   });
 
-  // Delete poll (Clearance >= 3)
-  app.delete('/api/voting/polls/:id', requireAuth, requireClearance(3), (req, res) => {
+  // Delete poll (voting.manage)
+  app.delete('/api/voting/polls/:id', requireAuth, requireCapability('voting.manage'), (req, res) => {
     try {
       const poll = votingRepository.getPoll(req.params.id);
       if (!poll) {
@@ -109,12 +120,7 @@ export const registerVotingRoutes = (app, ctx) => {
 
       votingRepository.deletePoll(req.params.id);
 
-      auditService?.record?.({
-        actor_nim: req.user.nim,
-        action: 'DELETE_POLL',
-        target: req.params.id,
-        details: `Menghapus pemilihan: ${poll.title}`
-      });
+      auditAdminMutation(req, 'voting.poll_delete', 'voting_poll', req.params.id, { title: poll.title });
 
       res.json({ message: 'Pemilihan berhasil dihapus.' });
     } catch (err) {
@@ -122,22 +128,29 @@ export const registerVotingRoutes = (app, ctx) => {
     }
   });
 
-  // Add candidate to poll (Clearance >= 3)
-  app.post('/api/voting/polls/:id/candidates', requireAuth, requireClearance(3), (req, res) => {
+  // Add candidate to poll (voting.manage)
+  app.post('/api/voting/polls/:id/candidates', requireAuth, requireCapability('voting.manage'), (req, res) => {
     try {
       const poll = votingRepository.getPoll(req.params.id);
       if (!poll) {
         return res.status(404).json({ error: 'Pemilihan tidak ditemukan.' });
       }
 
-      const { candidate_number, candidate_name, candidate_nim, vision_mission, image_url } = req.body;
-      if (!candidate_name || !candidate_number) {
-        return res.status(400).json({ error: 'Nomor urut dan nama kandidat wajib diisi.' });
+      if (poll.status !== 'draft') {
+        return res.status(400).json({ error: 'Kandidat hanya dapat ditambahkan saat pemilihan masih berstatus draft.' });
+      }
+      const { candidate_number, candidate_name, candidate_nim = '', vision_mission = '', image_url = '' } = req.body;
+      if (!Number.isInteger(Number(candidate_number)) || Number(candidate_number) < 1
+        || typeof candidate_name !== 'string' || !candidate_name.trim() || candidate_name.length > 160
+        || typeof candidate_nim !== 'string' || candidate_nim.length > 32
+        || typeof vision_mission !== 'string' || vision_mission.length > 3000
+        || typeof image_url !== 'string' || image_url.length > 2000) {
+        return res.status(400).json({ error: 'Nomor urut atau data kandidat tidak valid.' });
       }
 
       const candidate = votingRepository.addCandidate(poll.id, {
-        candidate_number,
-        candidate_name,
+        candidate_number: Number(candidate_number),
+        candidate_name: candidate_name.trim(),
         candidate_nim,
         vision_mission,
         image_url
@@ -149,8 +162,8 @@ export const registerVotingRoutes = (app, ctx) => {
     }
   });
 
-  // Delete candidate (Clearance >= 3)
-  app.delete('/api/voting/candidates/:candidateId', requireAuth, requireClearance(3), (req, res) => {
+  // Delete candidate (voting.manage)
+  app.delete('/api/voting/candidates/:candidateId', requireAuth, requireCapability('voting.manage'), (req, res) => {
     try {
       votingRepository.deleteCandidate(req.params.candidateId);
       res.json({ message: 'Kandidat berhasil dihapus.' });
@@ -169,12 +182,7 @@ export const registerVotingRoutes = (app, ctx) => {
 
       const receipt = votingRepository.castVote(req.params.id, req.user.nim, candidate_id);
 
-      auditService?.record?.({
-        actor_nim: req.user.nim,
-        action: 'CAST_VOTE',
-        target: req.params.id,
-        details: `Memberikan suara pada pemilihan ID ${req.params.id}`
-      });
+      auditAdminMutation(req, 'voting.cast', 'voting_poll', req.params.id, {});
 
       res.json({
         message: 'Suara (vote) Anda berhasil dicatat dan diamankan secara rahasia.',
@@ -195,9 +203,9 @@ export const registerVotingRoutes = (app, ctx) => {
       }
 
       const userVote = votingRepository.getUserVote(poll.id, req.user.nim);
-      const isAdmin = req.user.clearance_level >= 2;
+      const canViewResults = hasCapability(req.user, 'voting.manage');
 
-      if (poll.status !== 'closed' && !userVote && !isAdmin) {
+      if (poll.status !== 'closed' && !userVote && !canViewResults) {
         return res.status(403).json({ error: 'Hasil pemilihan belum dapat dilihat sebelum Anda memberikan suara atau pemilihan ditutup.' });
       }
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { POSITION_CAPABILITY_IDS } from '../../shared/positionAccess.js';
 
 /**
  * SQLite & memory operations owned by User Management & Authentication.
@@ -272,6 +273,60 @@ export const createUserSqlRepository = ({ sqlite, read, write, insertAudit }) =>
       return sanitized;
     },
 
+    bulkUpdateAccountAccess(accountIds, { clearanceLevel, capabilities = [], capabilityAction } = {}, actor) {
+      if (!Array.isArray(accountIds) || accountIds.length < 1 || accountIds.length > 500
+        || accountIds.some((accountId) => typeof accountId !== 'string' || !accountId)
+        || new Set(accountIds).size !== accountIds.length) {
+        return { error: 'Pilih antara 1 sampai 500 akun yang valid dan berbeda.' };
+      }
+      if (clearanceLevel !== undefined && ![1, 2, 3].includes(clearanceLevel)) {
+        return { error: 'Clearance anggota harus berupa level 1, 2, atau 3.' };
+      }
+      if (!Array.isArray(capabilities) || capabilities.some((capability) => !POSITION_CAPABILITY_IDS.has(capability))
+        || (capabilities.length && !['grant', 'revoke'].includes(capabilityAction))) {
+        return { error: 'Daftar capability atau tindakan tidak valid.' };
+      }
+      if (clearanceLevel === undefined && capabilities.length === 0) {
+        return { error: 'Pilih perubahan clearance atau capability terlebih dahulu.' };
+      }
+
+      const data = read();
+      const selectedIds = new Set(accountIds);
+      const users = data.users.filter((user) => selectedIds.has(user.account_id));
+      if (users.length !== selectedIds.size) return { error: 'Satu atau beberapa akun tidak ditemukan.' };
+      if (users.some((user) => user.role === 'superadmin')) {
+        return { error: 'Akses superadmin tidak dapat diubah melalui pengelolaan massal anggota.' };
+      }
+
+      for (const user of users) {
+        if (clearanceLevel !== undefined) user.clearance_level = clearanceLevel;
+        if (capabilities.length) {
+          const permissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
+          for (const capability of capabilities) {
+            if (capabilityAction === 'grant') permissions.add(capability);
+            else permissions.delete(capability);
+          }
+          user.permissions = [...permissions];
+        }
+      }
+
+      const details = {
+        accountCount: users.length,
+        ...(clearanceLevel === undefined ? {} : { clearanceLevel }),
+        ...(capabilities.length ? { capabilityAction, capabilities } : {})
+      };
+      if (!write(data, {
+        actorNim: actor.nim,
+        actorRole: actor.role,
+        action: 'user.bulk_access_update',
+        targetType: 'user_batch',
+        targetId: 'members',
+        details
+      })) return null;
+
+      return { updatedCount: users.length };
+    },
+
     updateUserRole(nim, role, actor = null) {
       if (!['member', 'superadmin'].includes(role)) return null;
       const data = read();
@@ -279,7 +334,9 @@ export const createUserSqlRepository = ({ sqlite, read, write, insertAudit }) =>
       if (!user) return null;
       user.role = role;
       user.clearance_level = role === 'superadmin' ? 0 : Math.min(user.clearance_level || 1, 3);
-      if (role === 'superadmin') user.permissions = (user.permissions || []).filter((permission) => permission !== 'academic_curate');
+      if (role === 'superadmin') {
+        user.permissions = (user.permissions || []).filter((permission) => !['academic_curate', 'meeting_organize'].includes(permission));
+      }
       user.session_version = (user.session_version || 0) + 1;
       if (!write(data, actor ? {
         actorNim: actor.nim,
@@ -313,6 +370,26 @@ export const createUserSqlRepository = ({ sqlite, read, write, insertAudit }) =>
       return safeUser;
     },
 
+    setMeetingOrganizerPermission(nim, enabled, actor) {
+      const data = read();
+      const user = data.users.find((entry) => entry.nim.toLowerCase() === String(nim).toLowerCase());
+      if (!user || user.role === 'superadmin') return null;
+      const permissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
+      if (enabled) permissions.add('meeting_organize');
+      else permissions.delete('meeting_organize');
+      user.permissions = [...permissions];
+      if (!write(data, {
+        actorNim: actor.nim,
+        actorRole: actor.role,
+        action: enabled ? 'meeting.organizer_grant' : 'meeting.organizer_revoke',
+        targetType: 'user',
+        targetId: user.account_id,
+        details: { permission: 'meeting_organize', enabled }
+      })) return null;
+      const { password_hash, ...safeUser } = user;
+      return safeUser;
+    },
+
     deleteUser(nim) {
       const db = read();
       const idx = db.users.findIndex((u) => u.nim.toLowerCase() === String(nim).toLowerCase());
@@ -321,6 +398,7 @@ export const createUserSqlRepository = ({ sqlite, read, write, insertAudit }) =>
       const accountId = db.users[idx].account_id;
       db.users.splice(idx, 1);
       if (!write(db)) return false;
+      sqlite.prepare('DELETE FROM student_demographic_custom_values WHERE account_id = ?').run(accountId);
       sqlite.prepare('DELETE FROM notifications WHERE recipient_account_id = ?').run(accountId);
       sqlite.prepare('DELETE FROM notification_preferences WHERE account_id = ?').run(accountId);
       return true;

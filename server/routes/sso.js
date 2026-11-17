@@ -63,12 +63,13 @@ export const registerSsoRoutes = (app, context) => {
     return true;
   };
 
-  setInterval(() => {
+  const stateCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [state, expiry] of pendingStates) {
       if (expiry < now) pendingStates.delete(state);
     }
   }, 60_000);
+  stateCleanupInterval.unref();
 
   // ─── Step 1: Redirect ke Google (atau Mock selector di Development) ────
   // GET /api/auth/sso/google

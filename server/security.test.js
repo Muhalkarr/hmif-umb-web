@@ -640,6 +640,53 @@ test('session, clearance, CSRF, and secret-backed seed protections', async () =>
         assert.equal((await migratedSessionResponse.json()).user.account_id, accountId);
         const migratedSession = migratedSessionResponse.headers.get('set-cookie')?.split(';')[0];
         assert.equal(JSON.parse(Buffer.from(migratedSession.split('.')[1], 'base64url').toString()).sub, accountId);
+        const bulkAccess = await request('/api/admin/users/bulk-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: {
+                account_ids: [accountId],
+                clearance_level: 2,
+                capability_action: 'grant',
+                capabilities: ['student_demographics.view']
+            }
+        });
+        assert.equal(bulkAccess.status, 200, await bulkAccess.clone().text());
+        assert.equal((await bulkAccess.json()).updated_count, 1);
+        assert.equal((await request('/api/admin/student-demographics', { cookie: memberLogin.cookie })).status, 200);
+        const bulkAccessUser = (await (await request('/api/admin/users', { cookie: adminLogin.cookie })).json())
+            .users.find(({ account_id: id }) => id === accountId);
+        assert.equal(bulkAccessUser.clearance_level, 2);
+        assert.ok(bulkAccessUser.permissions.includes('student_demographics.view'));
+
+        const revokeBulkAccess = await request('/api/admin/users/bulk-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: {
+                account_ids: [accountId],
+                clearance_level: 1,
+                capability_action: 'revoke',
+                capabilities: ['student_demographics.view']
+            }
+        });
+        assert.equal(revokeBulkAccess.status, 200);
+        assert.equal((await request('/api/admin/student-demographics', { cookie: memberLogin.cookie })).status, 403);
+        assert.equal((await request('/api/admin/users/bulk-access', {
+            method: 'PUT',
+            cookie: memberLogin.cookie,
+            body: { account_ids: [accountId], clearance_level: 2 }
+        })).status, 403);
+        const protectedSuperadmin = await request('/api/admin/users/bulk-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { account_ids: [db.findUserByNIM('test-admin').account_id], clearance_level: 1 }
+        });
+        assert.equal(protectedSuperadmin.status, 400);
+        const invalidBulkCapability = await request('/api/admin/users/bulk-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { account_ids: [accountId], capability_action: 'grant', capabilities: ['superadmin'] }
+        });
+        assert.equal(invalidBulkCapability.status, 400);
         const projectSubmission = await request('/api/portal-records/project', {
             method: 'POST', cookie: memberLogin.cookie,
             body: {
@@ -957,7 +1004,176 @@ test('session, clearance, CSRF, and secret-backed seed protections', async () =>
             body: { clearance_level: 3 }
         });
         assert.equal(promotion.status, 200);
+        assert.equal((await request('/api/aspirations', { cookie: memberLogin.cookie })).status, 403);
+        assert.equal((await request('/api/ledger', { cookie: memberLogin.cookie })).status, 403);
+        assert.equal((await request('/api/admin/student-demographics', { cookie: memberLogin.cookie })).status, 403);
+        assert.equal((await request('/api/admin/position-access', { cookie: memberLogin.cookie })).status, 403);
+        const clearanceOnlyProker = await request('/api/proker', { cookie: memberLogin.cookie });
+        assert.equal(clearanceOnlyProker.status, 200);
+        assert.ok((await clearanceOnlyProker.json()).every((proker) => !Object.hasOwn(proker, 'budget_allocated')));
+        assert.equal((await request('/api/voting/polls', {
+            method: 'POST',
+            cookie: memberLogin.cookie,
+            body: { title: 'Denied poll', start_date: '2030-01-01', end_date: '2030-01-02' }
+        })).status, 403);
+
+        const draftResponse = await request('/api/site/config?preview=draft', { cookie: adminLogin.cookie });
+        const draftSite = await draftResponse.json();
+        const accessTermId = 'term-position-access-test';
+        const accessPositionId = 'position-bph-test';
+        const accessStartDate = getHmifCalendarDate(new Date());
+        draftSite.config.content.data.organizationStructure = {
+            people: [{
+                id: 'person-position-access-test',
+                name: 'Test Pengurus',
+                accountId: db.findUserByNIM('test-member').account_id
+            }],
+            terms: [{
+                id: accessTermId,
+                name: 'Periode Pengujian Akses',
+                startDate: accessStartDate,
+                endDate: null,
+                status: 'active',
+                units: [{ id: 'unit-bph-test', parentUnitId: null, name: 'BPH', code: 'BPH', order: 0 }],
+                positions: [{
+                    id: accessPositionId,
+                    unitId: 'unit-bph-test',
+                    title: 'Pengurus Pengujian',
+                    code: 'TEST',
+                    maxOccupants: 1,
+                    required: false,
+                    order: 0
+                }],
+                assignments: [{
+                    id: 'assignment-position-access-test',
+                    personId: 'person-position-access-test',
+                    positionId: accessPositionId,
+                    startDate: accessStartDate,
+                    endDate: null,
+                    kind: 'substantive'
+                }]
+            }]
+        };
+        const savedAccessDraft = await request('/api/site/draft', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { config: draftSite.config, expected_revision_id: draftSite.revision_id }
+        });
+        assert.equal(savedAccessDraft.status, 201, await savedAccessDraft.clone().text());
+        assert.equal((await request('/api/site/publish', {
+            method: 'POST', cookie: adminLogin.cookie, body: {}
+        })).status, 200);
+        const positionMapping = await request('/api/admin/position-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: {
+                term_id: accessTermId,
+                position_id: accessPositionId,
+                capabilities: [
+                    'aspirations.manage',
+                    'finance.manage',
+                    'student_demographics.view',
+                    'proker_lpj.view',
+                    'cadets.manage',
+                    'delegations.manage',
+                    'voting.manage'
+                ]
+            }
+        });
+        assert.equal(positionMapping.status, 200);
+        const studentDemographicSettings = await request('/api/admin/student-demographics/settings', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: {
+                settings: {
+                    visibleColumns: ['name', 'nim', 'email'],
+                    customColumns: [{
+                        id: 'field-profile-test',
+                        label: 'Program',
+                        type: 'single_select',
+                        options: ['Backend', 'Web'],
+                        visible: true
+                    }, {
+                        id: 'field-private-test',
+                        label: 'Target angka',
+                        type: 'number',
+                        options: [],
+                        visible: false
+                    }]
+                }
+            }
+        });
+        assert.equal(studentDemographicSettings.status, 200, await studentDemographicSettings.clone().text());
+        assert.equal((await request('/api/admin/student-demographics/settings', { cookie: memberLogin.cookie })).status, 403);
+        const memberCustomFields = await request('/api/student-demographics/profile-fields', { cookie: memberLogin.cookie });
+        assert.equal(memberCustomFields.status, 200);
+        assert.equal((await memberCustomFields.json()).fields.length, 2);
+        const memberCustomValues = await request('/api/student-demographics/profile-fields', {
+            method: 'PUT',
+            cookie: memberLogin.cookie,
+            body: { values: { 'field-profile-test': 'Backend', 'field-private-test': 3 } }
+        });
+        assert.equal(memberCustomValues.status, 200);
+        const adminCustomValues = await request(`/api/admin/student-demographics/custom-values/${accountId}`, {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { values: { 'field-private-test': 4 } }
+        });
+        assert.equal(adminCustomValues.status, 200);
+        const studentDemographics = await request('/api/admin/student-demographics', { cookie: memberLogin.cookie });
+        assert.equal(studentDemographics.status, 200);
+        const studentDemographicsBody = await studentDemographics.json();
+        assert.equal(studentDemographicsBody.sample, undefined);
+        assert.deepEqual(studentDemographicsBody.columns.map(({ id }) => id), ['name', 'nim', 'email', 'field-profile-test']);
+        const memberRow = studentDemographicsBody.accounts.find(({ nim }) => nim === 'test-member');
+        assert.equal(memberRow['field-profile-test'], 'Backend');
+        assert.equal(Object.hasOwn(memberRow, 'account_id'), false);
+        assert.equal(Object.hasOwn(memberRow, 'password_hash'), false);
+        const incompatibleDemographicSettings = await request('/api/admin/student-demographics/settings', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: {
+                settings: {
+                    visibleColumns: ['name'],
+                    customColumns: [{
+                        id: 'field-profile-test',
+                        label: 'Program',
+                        type: 'single_select',
+                        options: ['Web'],
+                        visible: true
+                    }, {
+                        id: 'field-private-test',
+                        label: 'Target angka',
+                        type: 'number',
+                        options: [],
+                        visible: false
+                    }]
+                }
+            }
+        });
+        assert.equal(incompatibleDemographicSettings.status, 409);
+        const emptyDemographicSettings = await request('/api/admin/student-demographics/settings', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { settings: { visibleColumns: [], customColumns: [] } }
+        });
+        assert.equal(emptyDemographicSettings.status, 200);
+        const superadminDemographics = await request('/api/admin/student-demographics', { cookie: adminLogin.cookie });
+        assert.equal(superadminDemographics.status, 200);
+        const superadminDemographicsBody = await superadminDemographics.json();
+        assert.ok(superadminDemographicsBody.columns.some(({ id }) => id === 'nim'));
+        assert.ok(superadminDemographicsBody.accounts.some(({ nim }) => nim === 'test-member'));
+        const memberDemographicsWithoutColumns = await request('/api/admin/student-demographics', { cookie: memberLogin.cookie });
+        assert.equal(memberDemographicsWithoutColumns.status, 200);
+        assert.deepEqual((await memberDemographicsWithoutColumns.json()).columns, []);
         assert.equal((await request('/api/aspirations', { cookie: memberLogin.cookie })).status, 200);
+        assert.equal((await request('/api/ledger', { cookie: memberLogin.cookie })).status, 200);
+        assert.equal((await request('/api/proker/lpj-summary', { cookie: memberLogin.cookie })).status, 200);
+        assert.equal((await request('/api/voting/polls', {
+            method: 'POST',
+            cookie: memberLogin.cookie,
+            body: { title: 'Position-managed poll', start_date: '2030-01-01', end_date: '2030-01-02' }
+        })).status, 201);
 
         const createdProker = await request('/api/proker', {
             method: 'POST',
@@ -1325,6 +1541,13 @@ test('session, clearance, CSRF, and secret-backed seed protections', async () =>
             body: { clearance_level: 1 }
         });
         assert.equal(demotion.status, 200);
+        assert.equal((await request('/api/aspirations', { cookie: memberLogin.cookie })).status, 200);
+        const revokedPositionMapping = await request('/api/admin/position-access', {
+            method: 'PUT',
+            cookie: adminLogin.cookie,
+            body: { term_id: accessTermId, position_id: accessPositionId, capabilities: [] }
+        });
+        assert.equal(revokedPositionMapping.status, 200);
         assert.equal((await request('/api/aspirations', { cookie: memberLogin.cookie })).status, 403);
 
         const passwordChange = await request('/api/auth/change-password', {

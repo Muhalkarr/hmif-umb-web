@@ -1,6 +1,8 @@
+import { sanitizePublicOrganizationStructure } from '../siteSchema.js';
+
 /** Endpoint domain registerSiteRoutes. */
 export const registerSiteRoutes = (app, context) => {
-  const { db, requireSuperadmin, fs, path, SOUNDTRACK_DIR, validateSiteConfig, assetUpload, multer, assetMagic, randomUUID, ASSET_DIR, createHash, auditAdminMutation, isAssetReferenced, soundtrackUpload, soundtrackMagic } = context;
+  const { db, governanceDocumentsRepository, requireSuperadmin, fs, path, CONSTITUTION_DOCUMENT_PATH, SOUNDTRACK_DIR, validateSiteConfig, assetUpload, multer, assetMagic, randomUUID, ASSET_DIR, createHash, auditAdminMutation, isAssetReferenced, soundtrackUpload, soundtrackMagic } = context;
 
 app.get('/api/site/config', (req, res) => {
   const state = db.getSiteState();
@@ -11,6 +13,9 @@ app.get('/api/site/config', (req, res) => {
   const publicConfig = structuredClone(state.published);
   const siteData = publicConfig.content?.data || {};
   for (const operator of siteData.operators || []) delete operator.nim;
+  if (siteData.organizationStructure) {
+    siteData.organizationStructure = sanitizePublicOrganizationStructure(siteData.organizationStructure);
+  }
   for (const generation of siteData.generations || []) {
     for (const leader of Object.values(generation.leadership || {})) {
       delete leader.nim;
@@ -28,6 +33,23 @@ app.get('/api/site/config', (req, res) => {
   }
   res.set('Cache-Control', 'no-store');
   res.json({ config: publicConfig, revision_id: state.publishedRevisionId, preview: false });
+});
+
+app.get('/api/site/documents/constitution', (_req, res, next) => {
+  if (!fs.existsSync(CONSTITUTION_DOCUMENT_PATH)) {
+    return res.status(503).json({ error: 'Naskah resmi AD/ART dan GBHO tidak tersedia.' });
+  }
+  res.set({
+    'Content-Type': 'application/pdf',
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'public, max-age=3600',
+    'Content-Disposition': 'inline; filename="HMIF-UMB-AD-ART-GBHO-Resmi-2026.pdf"'
+  });
+  res.sendFile(CONSTITUTION_DOCUMENT_PATH, (error) => {
+    if (!error) return;
+    if (res.headersSent) return next(error);
+    res.status(503).json({ error: 'Naskah resmi AD/ART dan GBHO tidak dapat dikirim.' });
+  });
 });
 
 app.get('/api/soundtracks', (_req, res) => {
@@ -59,7 +81,7 @@ app.get('/api/soundtracks/:id/file', (req, res) => {
 
 app.post('/api/site/validate', requireSuperadmin, (req, res) => {
   try {
-    const config = validateSiteConfig(req.body.config, (id, kind) => db.assetExists(id, kind));
+    const config = validateSiteConfig(req.body.config, (id, kind) => db.assetExists(id, kind), (accountId) => db.accountExists(accountId));
     res.json({ valid: true, config });
   } catch (error) {
     res.status(400).json({ valid: false, error: error.message || 'Konfigurasi situs tidak valid.' });
@@ -71,7 +93,7 @@ app.put('/api/site/draft', requireSuperadmin, (req, res) => {
     if (typeof req.body.expected_revision_id !== 'string' || !/^[a-f0-9-]{36}$/.test(req.body.expected_revision_id)) {
       return res.status(428).json({ error: 'Muat versi draft terkini sebelum menyimpan.' });
     }
-    const config = validateSiteConfig(req.body.config, (id, kind) => db.assetExists(id, kind));
+    const config = validateSiteConfig(req.body.config, (id, kind) => db.assetExists(id, kind), (accountId) => db.accountExists(accountId));
     const revision = db.saveSiteDraft(config, req.user.nim, null, req.body.expected_revision_id ?? null);
     res.status(201).json({ message: 'DRAFT TERSIMPAN', revision, config });
   } catch (error) {
@@ -97,7 +119,7 @@ app.post('/api/site/revisions/:id/restore', requireSuperadmin, (req, res) => {
     if (typeof req.body.expected_revision_id !== 'string' || !/^[a-f0-9-]{36}$/.test(req.body.expected_revision_id)) {
       return res.status(428).json({ error: 'Muat versi draft terkini sebelum memulihkan.' });
     }
-    const config = validateSiteConfig(revision.payload, (id, kind) => db.assetExists(id, kind));
+    const config = validateSiteConfig(revision.payload, (id, kind) => db.assetExists(id, kind), (accountId) => db.accountExists(accountId));
     const restored = db.saveSiteDraft(config, req.user.nim, revision.id, req.body.expected_revision_id);
     res.status(201).json({ message: 'VERSI DIPULIHKAN MENJADI DRAFT', revision: restored });
   } catch (error) {
@@ -150,9 +172,12 @@ app.get('/api/site/assets/:id/file', (req, res) => {
   const asset = db.getAsset(req.params.id);
   if (!asset) return res.status(404).end();
   const published = db.getSiteState().published;
-  const publicReference = isAssetReferenced(published, asset.id);
+  const officialDocumentReference = governanceDocumentsRepository?.isAssetReferencedByOfficial?.(asset.id) || false;
+  const governanceRevisionReference = governanceDocumentsRepository?.isAssetReferencedByRevision?.(asset.id) || false;
+  const publicReference = isAssetReferenced(published, asset.id) || officialDocumentReference;
   const ownAvatar = req.user?.avatar_silhouette === `/api/site/assets/${asset.id}/file`;
-  if (!publicReference && !ownAvatar && req.user?.role !== 'superadmin') return res.status(404).end();
+  const memberDocumentReference = governanceRevisionReference && Boolean(req.user);
+  if (!publicReference && !memberDocumentReference && !ownAvatar && req.user?.role !== 'superadmin') return res.status(404).end();
   const filePath = path.resolve(ASSET_DIR, asset.stored_name);
   if (!filePath.startsWith(`${ASSET_DIR}${path.sep}`) || !fs.existsSync(filePath)) return res.status(404).end();
   res.set({
@@ -170,7 +195,8 @@ app.delete('/api/site/assets/:id', requireSuperadmin, (req, res) => {
   if (!asset) return res.status(404).json({ error: 'Aset tidak ditemukan.' });
   const site = db.getSiteState();
   if (isAssetReferenced(site.draft, asset.id) || isAssetReferenced(site.published, asset.id)
-    || db.isAssetReferencedByRevision(asset.id) || db.isAssetReferencedByUser(asset.id)) {
+    || db.isAssetReferencedByRevision(asset.id) || db.isAssetReferencedByUser(asset.id)
+    || governanceDocumentsRepository?.isAssetReferencedByRevision?.(asset.id)) {
     return res.status(409).json({ error: 'Aset masih digunakan oleh draft, publikasi, atau versi yang dapat dipulihkan.' });
   }
   const filePath = path.resolve(ASSET_DIR, asset.stored_name);

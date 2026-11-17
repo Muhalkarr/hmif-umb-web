@@ -1,4 +1,5 @@
 import { HMIF_DATA } from '../src/scripts/data.js';
+import { POSITION_CAPABILITY_IDS } from '../shared/positionAccess.js';
 
 export const PAGE_BLOCKS = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -7,13 +8,75 @@ export const PAGE_BLOCKS = [
     { id: 'showcase', label: 'Karya Mahasiswa' },
     { id: 'career', label: 'Alumni & Karier' },
     { id: 'squad', label: 'Struktur Pengurus' },
+    { id: 'cohort', label: 'Batalion Angkatan' },
     { id: 'proker', label: 'Program Kerja' },
+    { id: 'voting', label: 'E-Voting' },
     { id: 'inventory', label: 'Inventaris' },
     { id: 'calendar', label: 'Kalender' },
     { id: 'doctrine', label: 'Dokumen Organisasi' },
     { id: 'intel', label: 'Berita' },
-    { id: 'commlink', label: 'Aspirasi dan Kontak' }
+    { id: 'commlink', label: 'Aspirasi dan Kontak' },
+    { id: 'campus-map', label: 'Peta Kampus' },
+    { id: 'site-map', label: 'Peta Navigasi Situs' },
+    { id: 'university-organization', label: 'Struktur Universitas' }
 ];
+const DEFAULT_SITE_MAP_GROUPS = [
+    { id: 'group-about', title: 'Tentang HMIF', pageIds: ['vision', 'squad', 'doctrine'] },
+    { id: 'group-learning', title: 'Akademik & Karya', pageIds: ['knowledge', 'showcase', 'career'] },
+    { id: 'group-activities', title: 'Kegiatan & Komunitas', pageIds: ['proker', 'calendar', 'voting', 'cohort'] },
+    { id: 'group-services', title: 'Layanan & Fasilitas', pageIds: ['inventory', 'commlink', 'campus-map'] },
+    { id: 'group-information', title: 'Informasi & Institusi', pageIds: ['intel', 'university-organization'] }
+];
+const DEFAULT_SITE_MAP_DESCRIPTION = 'Telusuri kelompok, halaman, dan hubungan induk konten HMIF UMB. Berbeda dari menu sidebar dan peta geografis kampus.';
+const LEGACY_SITE_MAP_DESCRIPTION = 'Telusuri hubungan hierarkis antarhalaman situs.';
+
+const createDefaultSiteMapNodes = (pageIds, customPages = []) => {
+    const availablePageIds = new Set(pageIds.filter((id) => id !== 'site-map'));
+    const nodes = [];
+    const addedPageIds = new Set();
+    const addPage = (id, parentId = '') => {
+        if (!availablePageIds.has(id) || addedPageIds.has(id)) return;
+        nodes.push({ id, type: 'page', parentId });
+        addedPageIds.add(id);
+    };
+
+    addPage('dashboard');
+    for (const group of DEFAULT_SITE_MAP_GROUPS) {
+        nodes.push({ id: group.id, type: 'group', title: group.title, parentId: '' });
+        for (const pageId of group.pageIds) addPage(pageId, group.id);
+    }
+    for (const id of pageIds) addPage(id);
+    for (const page of customPages) addPage(`custom-${page.id}`);
+    return nodes;
+};
+
+const normalizeSiteMapNodes = (content, pageIds, customPages) => {
+    const defaultNodes = createDefaultSiteMapNodes(pageIds, customPages);
+    if (!Array.isArray(content?.siteMapNodes)) {
+        const legacyParents = content?.navigationParents;
+        const validPageIds = new Set([...pageIds, ...customPages.map(({ id }) => `custom-${id}`)]);
+        return defaultNodes.map((node) => {
+            if (node.type !== 'page') return node;
+            const parentId = legacyParents?.[node.id];
+            return typeof parentId === 'string' && validPageIds.has(parentId) && parentId !== node.id && parentId !== 'site-map'
+                ? { ...node, parentId }
+                : node;
+        });
+    }
+
+    const nodes = content.siteMapNodes
+        .filter((node) => node && typeof node === 'object')
+        .map((node) => ({ ...node }));
+    const existingIds = new Set(nodes.map(({ id }) => id));
+    const validGroupIds = new Set(nodes.filter(({ type }) => type === 'group').map(({ id }) => id));
+    for (const node of defaultNodes) {
+        if (existingIds.has(node.id)) continue;
+        const parentId = node.type === 'page' && validGroupIds.has(node.parentId) ? node.parentId : '';
+        nodes.push({ ...node, parentId });
+        existingIds.add(node.id);
+    }
+    return nodes;
+};
 
 export const BUILTIN_SITE_IMAGES = {
     logos: [
@@ -65,9 +128,35 @@ export function configReferencesAsset(config, id) {
             || gen.divisions?.some((division) => division.coordinatorAvatar === url
                 || division.members?.some((member) => typeof member !== 'string' && member.avatar === url)))
         || content.operators?.some((operator) => operator.avatar === url)
-        || content.news?.some((article) => article.thumbnail === url);
+        || content.news?.some((article) => article.thumbnail === url)
+        || content.campusMap?.campuses?.some((campus) => campus.buildings?.some((building) => (
+            building.floors?.some((floor) => floor.planImage === url)
+        )));
 }
 
+const emptyCampusMap = () => ({ navigationLabel: 'Peta Kampus', summary: '', campuses: [] });
+const emptyUniversityOrganization = () => ({ structures: [] });
+export const DEFAULT_GOVERNANCE_DOCUMENT_ACCESS = Object.freeze({
+    edit: Object.freeze({ clearance: 2, capability: 'constitution.edit' }),
+    ratify: Object.freeze({ clearance: 3, capability: 'constitution.ratify' })
+});
+const governanceDocumentCapabilities = new Set(['constitution.edit', 'constitution.ratify']);
+export const REPOSITORY_UNIVERSITY_ORG_UNITS = Object.freeze([
+    Object.freeze({
+        id: 'repo-university',
+        name: HMIF_DATA.identity.university,
+        kind: 'university',
+        parentId: null,
+        description: 'Metadata identitas universitas yang tersedia di repositori.'
+    }),
+    Object.freeze({
+        id: 'repo-faculty',
+        name: HMIF_DATA.identity.faculty,
+        kind: 'faculty',
+        parentId: 'repo-university',
+        description: 'Metadata fakultas yang tersedia di repositori.'
+    })
+]);
 const emptyContentData = {
     identity: { name: '', abbreviation: '', university: '', faculty: '', established: '', location: '', tagline: '', logo: '', activeCadets: '', divisionsCount: 0, prokerCount: 0, complianceRate: '' },
     visionMission: { vision: '', mission: [], sambutanKahim: { leaderName: '', role: '', period: '', operatorCode: '', quote: '' } },
@@ -77,6 +166,8 @@ const emptyContentData = {
     generations: [],
     operators: [],
     news: [],
+    campusMap: emptyCampusMap(),
+    universityOrganization: emptyUniversityOrganization(),
     doctrine: { adArt: [], cadetRoadmap: [], cadetQuiz: [] }
 };
 
@@ -91,6 +182,8 @@ const initialContentData = process.env.NODE_ENV === 'production'
         generations: structuredClone(HMIF_DATA.generations || []),
         operators: structuredClone(HMIF_DATA.operators),
         news: structuredClone(HMIF_DATA.news),
+        campusMap: emptyCampusMap(),
+        universityOrganization: emptyUniversityOrganization(),
         doctrine: structuredClone(HMIF_DATA.doctrine)
     };
 const initialSiteCopy = process.env.NODE_ENV === 'production'
@@ -114,11 +207,16 @@ const initialSiteCopy = process.env.NODE_ENV === 'production'
             career: 'Jejaring alumni, mentor, dan kesempatan kerja yang dikurasi HMIF.',
             inventory: 'Daftar aset organisasi dan status peminjaman.',
             squad: 'Profil fungsionaris, pengurus, dan kepala divisi.',
+            cohort: 'Informasi dan profil setiap batalion angkatan.',
             proker: 'Daftar program kerja, sasaran, KPI, dan status realisasi.',
+            voting: 'Pemungutan suara elektronik organisasi.',
             calendar: 'Kalender akademik yang diselaraskan dengan agenda organisasi.',
             doctrine: 'Pusat literasi AD/ART, GBHO, dan tahapan kaderisasi.',
             intel: 'Dokumentasi berkala, berita, dan arsip kegiatan.',
-            commlink: 'Saluran komunikasi mahasiswa untuk menyampaikan aspirasi.'
+            commlink: 'Saluran komunikasi mahasiswa untuk menyampaikan aspirasi.',
+            'campus-map': 'Jelajahi lokasi kampus, gedung, lantai, dan fasilitas.',
+            'site-map': DEFAULT_SITE_MAP_DESCRIPTION,
+            'university-organization': 'Bagan unit resmi universitas dan masa berlakunya.'
         },
         sectionTitles: {
             vision: 'VISI DAN MISI ORGANISASI',
@@ -127,13 +225,33 @@ const initialSiteCopy = process.env.NODE_ENV === 'production'
             career: 'JEJARING ALUMNI & KARIER',
             inventory: 'INVENTARIS & PEMINJAMAN ASET',
             squad: 'STRUKTUR PENGURUS',
+            cohort: 'BATALION ANGKATAN',
             proker: 'PROGRAM KERJA',
+            voting: 'E-VOTING',
             calendar: 'KALENDER KEGIATAN',
             doctrine: 'DOKUMEN ORGANISASI',
             intel: 'BERITA DAN INFORMASI',
-            commlink: 'ASPIRASI DAN KONTAK'
+            commlink: 'ASPIRASI DAN KONTAK',
+            'campus-map': 'PETA KAMPUS DAN FASILITAS',
+            'site-map': 'PETA NAVIGASI SITUS',
+            'university-organization': 'STRUKTUR ORGANISASI UNIVERSITAS'
         }
     };
+
+    export const DEFAULT_LIGHT_THEME_COLORS = {
+        background: '#F1F0E9',
+        panel: '#E5E5DC',
+        accent: '#426B66',
+        accentAlt: '#A94F1D',
+        danger: '#B94C3D',
+        success: '#3F6E68',
+        info: '#66528A',
+        text: '#111315',
+        textMuted: '#555A56',
+        border: '#CFD0C8'
+    };
+
+    export const DUST_PERCENT_MAX = 500;
 
 export const DEFAULT_SITE_CONFIG = {
     theme: {
@@ -149,6 +267,7 @@ export const DEFAULT_SITE_CONFIG = {
             textMuted: '#9cb1ce',
             border: '#1e2b40'
         },
+        lightColors: { ...DEFAULT_LIGHT_THEME_COLORS },
         fonts: { body: 'Inter', heading: 'Geometos', mono: 'JetBrainsMono' },
         typeScale: 16,
         shape: 'tactical',
@@ -156,25 +275,60 @@ export const DEFAULT_SITE_CONFIG = {
         background: { mode: 'grid', image: '/assets/pc-bg.jpg', assetId: null },
         heroImage: '/assets/hmif_prts_bridge.jpg',
         contrast: 'normal',
-        motion: true
+        motion: true,
+        dust: { density: 100, opacity: 100 }
     },
     pages: PAGE_BLOCKS.map(({ id }) => ({ id, visible: true, layout: 'default' })),
     content: {
         ...structuredClone(initialSiteCopy),
+        governanceDocumentAccess: structuredClone(DEFAULT_GOVERNANCE_DOCUMENT_ACCESS),
+        sidebarOrder: PAGE_BLOCKS.map(({ id }) => id),
+        siteMapNodes: createDefaultSiteMapNodes(PAGE_BLOCKS.map(({ id }) => id)),
+        customPages: [],
         data: structuredClone(initialContentData)
     }
 };
 
 export function withSiteDefaults(config) {
     const pages = new Map((config.pages || []).map((page) => [page.id, page]));
-    const orderedPageIds = [
-        ...(config.pages || []).map((page) => page.id).filter((id, index, ids) => PAGE_BLOCKS.some((block) => block.id === id) && ids.indexOf(id) === index),
-        ...PAGE_BLOCKS.map(({ id }) => id).filter((id) => !pages.has(id))
-    ];
+    const orderedPageIds = (config.pages || [])
+        .map((page) => page.id)
+        .filter((id, index, ids) => PAGE_BLOCKS.some((block) => block.id === id) && ids.indexOf(id) === index);
+    PAGE_BLOCKS.forEach(({ id }, index) => {
+        if (orderedPageIds.includes(id)) return;
+        const previousPageId = PAGE_BLOCKS.slice(0, index).reverse()
+            .find((page) => orderedPageIds.includes(page.id))?.id;
+        const insertionIndex = previousPageId ? orderedPageIds.indexOf(previousPageId) + 1 : 0;
+        orderedPageIds.splice(insertionIndex, 0, id);
+    });
     const contentData = config.content?.data || {};
     const contentDefaults = structuredClone(initialContentData);
     const incomingBackground = config.theme?.background || {};
     const resolvedBackgroundImage = resolveBackgroundImage(incomingBackground);
+    const customPages = Array.isArray(config.content?.customPages) ? config.content.customPages : [];
+    const availableSidebarIds = [
+        ...orderedPageIds,
+        ...customPages.filter((page) => typeof page?.id === 'string').map((page) => `custom-${page.id}`)
+    ];
+    const availableSidebarIdSet = new Set(availableSidebarIds);
+    const sidebarOrder = Array.isArray(config.content?.sidebarOrder)
+        ? config.content.sidebarOrder.filter((id, index, ids) => (
+            typeof id === 'string' && availableSidebarIdSet.has(id) && ids.indexOf(id) === index
+        ))
+        : [];
+    for (const id of availableSidebarIds) {
+        if (!sidebarOrder.includes(id)) sidebarOrder.push(id);
+    }
+    const siteMapNodes = normalizeSiteMapNodes(config.content, availableSidebarIds, customPages);
+    const contentConfig = { ...(config.content || {}) };
+    delete contentConfig.navigationParents;
+    const sectionDescriptions = {
+        ...DEFAULT_SITE_CONFIG.content.sectionDescriptions,
+        ...(config.content?.sectionDescriptions || {})
+    };
+    if (sectionDescriptions['site-map'] === LEGACY_SITE_MAP_DESCRIPTION) {
+        sectionDescriptions['site-map'] = DEFAULT_SITE_MAP_DESCRIPTION;
+    }
     return {
         ...structuredClone(DEFAULT_SITE_CONFIG),
         ...config,
@@ -182,7 +336,9 @@ export function withSiteDefaults(config) {
             ...structuredClone(DEFAULT_SITE_CONFIG.theme),
             ...(config.theme || {}),
             colors: { ...DEFAULT_SITE_CONFIG.theme.colors, ...(config.theme?.colors || {}) },
+            lightColors: { ...DEFAULT_SITE_CONFIG.theme.lightColors, ...(config.theme?.lightColors || {}) },
             fonts: { ...DEFAULT_SITE_CONFIG.theme.fonts, ...(config.theme?.fonts || {}) },
+            dust: { ...DEFAULT_SITE_CONFIG.theme.dust, ...(config.theme?.dust || {}) },
             background: {
                 ...structuredClone(DEFAULT_SITE_CONFIG.theme.background),
                 ...incomingBackground,
@@ -194,7 +350,21 @@ export function withSiteDefaults(config) {
         pages: orderedPageIds.map((id) => ({ ...DEFAULT_SITE_CONFIG.pages.find((page) => page.id === id), ...(pages.get(id) || {}) })),
         content: {
             ...structuredClone(DEFAULT_SITE_CONFIG.content),
-            ...(config.content || {}),
+            ...contentConfig,
+            governanceDocumentAccess: {
+                edit: {
+                    ...DEFAULT_SITE_CONFIG.content.governanceDocumentAccess.edit,
+                    ...(config.content?.governanceDocumentAccess?.edit || {})
+                },
+                ratify: {
+                    ...DEFAULT_SITE_CONFIG.content.governanceDocumentAccess.ratify,
+                    ...(config.content?.governanceDocumentAccess?.ratify || {})
+                }
+            },
+            sidebarOrder,
+            siteMapNodes,
+            customPages,
+            sectionDescriptions,
             sectionTitles: { ...DEFAULT_SITE_CONFIG.content.sectionTitles, ...(config.content?.sectionTitles || {}) },
             data: {
                 ...contentDefaults,
@@ -211,8 +381,12 @@ export function withSiteDefaults(config) {
                 generations: Array.isArray(contentData.generations) ? contentData.generations : contentDefaults.generations,
                 operators: Array.isArray(contentData.operators) ? contentData.operators : contentDefaults.operators,
                 news: Array.isArray(contentData.news) ? contentData.news : contentDefaults.news,
+                universityOrganization: contentData.universityOrganization ?? contentDefaults.universityOrganization,
                 doctrine: { ...contentDefaults.doctrine, ...(contentData.doctrine || {}) }
-            }
+            },
+            customPages: Array.isArray(config.content?.customPages)
+                ? structuredClone(config.content.customPages)
+                : []
         }
     };
 }
@@ -224,6 +398,8 @@ const iconStyles = new Set(['tactical', 'minimal', 'text']);
 const backgroundModes = new Set(['grid', 'solid', 'image']);
 const contrasts = new Set(['normal', 'high']);
 const layouts = new Set(['default', 'wide', 'compact']);
+const customPageBlockTypes = new Set(['text', 'notice']);
+const customPageTones = new Set(['info', 'success', 'warning']);
 const copyLimits = {
     heroEyebrow: 80,
     heroLead: 500,
@@ -249,9 +425,83 @@ const contrastRatio = (first, second) => {
     return (lighter + 0.05) / (darker + 0.05);
 };
 
+const validateThemeColors = (input, paletteName) => {
+    const colors = {};
+    for (const key of Object.keys(DEFAULT_SITE_CONFIG.theme.colors)) {
+        const color = input?.[key];
+        if (typeof color !== 'string' || !colorPattern.test(color)) {
+            throw new Error(paletteName === 'gelap'
+                ? `Warna ${key} harus berupa hex #RRGGBB.`
+                : `Warna ${key} pada palet cerah harus berupa hex #RRGGBB.`);
+        }
+        colors[key] = color.toLowerCase();
+    }
+
+    const label = paletteName === 'gelap' ? '' : `Palet ${paletteName}: `;
+    if (contrastRatio(colors.text, colors.background) < 4.5) {
+        throw new Error(`${label}kontras teks utama terhadap latar minimal 4.5:1.`);
+    }
+    if (contrastRatio(colors.textMuted, colors.background) < 4.5) {
+        throw new Error(`${label}kontras teks sekunder terhadap latar minimal 4.5:1.`);
+    }
+    if ([colors.accent, colors.accentAlt, colors.danger, colors.success, colors.info]
+        .some((color) => contrastRatio(color, colors.background) < 3)) {
+        throw new Error(`${label}kontras warna aksen dan status terhadap latar minimal 3:1.`);
+    }
+    return colors;
+};
+
 const safeList = (value, { maxItems, label, map }) => {
     if (!Array.isArray(value) || value.length > maxItems) throw new Error(`${label} harus berupa daftar maksimal ${maxItems} item.`);
     return value.map((item, index) => map(item, `${label} ${index + 1}`));
+};
+
+const validateCustomPages = (value) => {
+    const ids = new Set();
+    const slugs = new Set(PAGE_BLOCKS.map(({ id }) => id));
+    const customPages = safeList(value ?? [], {
+        maxItems: 20,
+        label: 'Halaman kustom',
+        map: (page, label) => {
+            const id = safeText(page?.id, 36, `${label} ID`);
+            const slug = safeText(page?.slug, 48, `${label} slug`);
+            const title = safeText(page?.title, 80, `${label} judul`);
+            const description = safeText(page?.description, 500, `${label} deskripsi`);
+            const layout = page?.layout === undefined ? 'default' : page.layout;
+            if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id) || ids.has(id)) {
+                throw new Error(`${label} ID tidak valid atau duplikat.`);
+            }
+            if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slugs.has(slug)) {
+                throw new Error(`${label} slug tidak valid atau sudah digunakan.`);
+            }
+            if (!title || typeof page.visible !== 'boolean') {
+                throw new Error(`${label} memerlukan judul dan status tampil yang valid.`);
+            }
+            if (!layouts.has(layout)) throw new Error(`${label} memakai tata letak yang tidak didukung.`);
+            ids.add(id);
+            slugs.add(slug);
+            const blocks = safeList(page.blocks, {
+                maxItems: 12,
+                label: `${label} modul`,
+                map: (block, blockLabel) => {
+                    if (!block || typeof block !== 'object' || !customPageBlockTypes.has(block.type)) {
+                        throw new Error(`${blockLabel} memakai jenis yang tidak didukung.`);
+                    }
+                    const blockTitle = safeText(block.title, 100, `${blockLabel} judul`);
+                    const body = safeText(block.body, 4000, `${blockLabel} isi`);
+                    if (!blockTitle || !body) throw new Error(`${blockLabel} memerlukan judul dan isi.`);
+                    if (block.type === 'notice') {
+                        if (!customPageTones.has(block.tone)) throw new Error(`${blockLabel} memiliki jenis penanda yang tidak valid.`);
+                        return { type: block.type, title: blockTitle, body, tone: block.tone };
+                    }
+                    return { type: block.type, title: blockTitle, body };
+                }
+            });
+            if (blocks.length === 0) throw new Error(`${label} harus memiliki minimal satu modul.`);
+            return { id, slug, title, description, layout, visible: page.visible, blocks };
+        }
+    });
+    return customPages;
 };
 
 const validateAssetUrl = (value, label, assetExists) => {
@@ -319,7 +569,7 @@ export function inferDepartmentId(operator) {
     return slug.startsWith('dept-') ? slug : `dept-${slug}`;
 }
 
-const validateOrganizationStructure = (input) => {
+const validateOrganizationStructure = (input, accountExists) => {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
         throw new Error('Struktur organisasi tidak valid.');
     }
@@ -353,10 +603,17 @@ const validateOrganizationStructure = (input) => {
             if (person?.isPublic !== undefined && typeof person.isPublic !== 'boolean') {
                 throw new Error(`${label} visibilitas publik tidak valid.`);
             }
-            return { id, name, isPublic: person?.isPublic === true };
+            const accountId = person?.accountId ? safeText(person.accountId, 36, `${label} akun`) : '';
+            if (accountId && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(accountId)) {
+                throw new Error(`${label} akun tidak valid.`);
+            }
+            if (accountId && !accountExists(accountId)) throw new Error(`${label} tertaut ke akun yang tidak ditemukan.`);
+            return { id, name, isPublic: person?.isPublic === true, ...(accountId ? { accountId } : {}) };
         }
     });
     assertUniqueIds(people, 'personel');
+    const linkedAccounts = people.map(({ accountId }) => accountId).filter(Boolean);
+    if (new Set(linkedAccounts).size !== linkedAccounts.length) throw new Error('Satu akun hanya boleh ditautkan ke satu personel organisasi.');
     const peopleById = new Set(people.map(({ id }) => id));
 
     const terms = safeList(input.terms ?? [], {
@@ -492,9 +749,293 @@ const validateOrganizationStructure = (input) => {
     return { people, terms };
 };
 
-const validateContentData = (data, assetExists) => {
+export function sanitizePublicOrganizationStructure(input) {
+    const structure = structuredClone(input || { people: [], terms: [] });
+    const publicPeople = (structure.people || []).filter((person) => person.isPublic === true);
+    const publicPersonIds = new Set(publicPeople.map(({ id }) => id));
+    for (const person of publicPeople) delete person.accountId;
+    structure.people = publicPeople;
+    structure.terms = (structure.terms || []).map((term) => ({
+        ...term,
+        assignments: (term.assignments || []).map((assignment) => publicPersonIds.has(assignment.personId)
+            ? assignment
+            : {
+                positionId: assignment.positionId,
+                startDate: assignment.startDate,
+                endDate: assignment.endDate,
+                kind: assignment.kind,
+                personId: null
+            })
+    }));
+    return structure;
+}
+
+const campusCoordinate = (value, label, min, max) => {
+    if (value === null || value === undefined || value === '') return null;
+    const coordinate = Number(value);
+    if (!Number.isFinite(coordinate) || coordinate < min || coordinate > max) {
+        throw new Error(`${label} tidak valid.`);
+    }
+    return Number(coordinate.toFixed(6));
+};
+
+const campusDimension = (value, label, { min = 0, max = 10000, integer = false } = {}) => {
+    const dimension = Number(value);
+    if (!Number.isFinite(dimension) || dimension < min || dimension > max || (integer && !Number.isInteger(dimension))) {
+        throw new Error(`${label} tidak valid.`);
+    }
+    return dimension;
+};
+
+const validateCampusMap = (input, assetExists) => {
+    if (!input || typeof input !== 'object') throw new Error('Peta kampus tidak valid.');
+    if (input.publicWidgetVisible !== undefined && typeof input.publicWidgetVisible !== 'boolean') {
+        throw new Error('Visibilitas ringkasan peta kampus tidak valid.');
+    }
+    const navigationLabel = safeText(input.navigationLabel ?? 'Peta Kampus', 48, 'Label navigasi peta kampus');
+    if (!navigationLabel) throw new Error('Label navigasi peta kampus wajib diisi.');
+    const summary = safeText(input.summary ?? '', 500, 'Ringkasan peta kampus');
+    const campuses = safeList(input.campuses ?? [], {
+        maxItems: 20,
+        label: 'Kampus pada peta',
+        map: (campus, campusLabel) => {
+            const id = safeText(campus?.id, 64, `${campusLabel} ID`);
+            if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`${campusLabel} ID tidak valid.`);
+            const name = safeText(campus?.name, 120, `${campusLabel} nama`);
+            if (!name) throw new Error(`${campusLabel} nama wajib diisi.`);
+            const latitude = campusCoordinate(campus?.latitude, `${campusLabel} lintang`, -90, 90);
+            const longitude = campusCoordinate(campus?.longitude, `${campusLabel} bujur`, -180, 180);
+            if ((latitude === null) !== (longitude === null)) throw new Error(`${campusLabel} harus mengisi lintang dan bujur sekaligus.`);
+            const buildings = safeList(campus?.buildings ?? [], {
+                maxItems: 100,
+                label: `${campusLabel} gedung`,
+                map: (building, buildingLabel) => {
+                    const buildingId = safeText(building?.id, 64, `${buildingLabel} ID`);
+                    if (!/^[a-zA-Z0-9_-]+$/.test(buildingId)) throw new Error(`${buildingLabel} ID tidak valid.`);
+                    const buildingName = safeText(building?.name, 120, `${buildingLabel} nama`);
+                    if (!buildingName) throw new Error(`${buildingLabel} nama wajib diisi.`);
+                    const buildingLatitude = campusCoordinate(building?.latitude, `${buildingLabel} lintang`, -90, 90);
+                    const buildingLongitude = campusCoordinate(building?.longitude, `${buildingLabel} bujur`, -180, 180);
+                    if ((buildingLatitude === null) !== (buildingLongitude === null)) {
+                        throw new Error(`${buildingLabel} harus mengisi lintang dan bujur sekaligus.`);
+                    }
+                    const floors = safeList(building?.floors ?? [], {
+                        maxItems: 30,
+                        label: `${buildingLabel} lantai`,
+                        map: (floor, floorLabel) => {
+                            const floorId = safeText(floor?.id, 64, `${floorLabel} ID`);
+                            if (!/^[a-zA-Z0-9_-]+$/.test(floorId)) throw new Error(`${floorLabel} ID tidak valid.`);
+                            const floorName = safeText(floor?.name, 120, `${floorLabel} nama`);
+                            if (!floorName) throw new Error(`${floorLabel} nama wajib diisi.`);
+                            const level = campusDimension(floor?.level ?? 0, `${floorLabel} tingkat`, { min: -10, max: 100, integer: true });
+                            const widthMeters = campusDimension(floor?.widthMeters ?? 30, `${floorLabel} lebar`, { min: 0.1 });
+                            const heightMeters = campusDimension(floor?.heightMeters ?? 20, `${floorLabel} tinggi`, { min: 0.1 });
+                            const scaleDenominator = campusDimension(floor?.scaleDenominator ?? 100, `${floorLabel} skala`, { min: 1, max: 100000, integer: true });
+                            const rawPlanImage = floor?.planImage ?? '';
+                            const planImage = rawPlanImage === '' ? '' : validateAssetUrl(rawPlanImage, `${floorLabel} gambar denah`, assetExists);
+                            const legend = safeList(floor?.legend ?? [], {
+                                maxItems: 40,
+                                label: `${floorLabel} legenda`,
+                                map: (entry, legendLabel) => {
+                                    const legendId = safeText(entry?.id, 64, `${legendLabel} ID`);
+                                    if (!/^[a-zA-Z0-9_-]+$/.test(legendId)) throw new Error(`${legendLabel} ID tidak valid.`);
+                                    const label = safeText(entry?.label, 80, `${legendLabel} nama`);
+                                    if (!label || typeof entry?.color !== 'string' || !colorPattern.test(entry.color)) {
+                                        throw new Error(`${legendLabel} memerlukan nama dan warna hex.`);
+                                    }
+                                    return { id: legendId, label, color: entry.color.toLowerCase() };
+                                }
+                            });
+                            if (new Set(legend.map(({ id }) => id)).size !== legend.length) {
+                                throw new Error(`ID ${floorLabel} legenda harus unik.`);
+                            }
+                            const legendIds = new Set(legend.map(({ id }) => id));
+                            const features = safeList(floor?.features ?? [], {
+                                maxItems: 500,
+                                label: `${floorLabel} objek`,
+                                map: (feature, featureLabel) => {
+                                    const featureId = safeText(feature?.id, 64, `${featureLabel} ID`);
+                                    if (!/^[a-zA-Z0-9_-]+$/.test(featureId)) throw new Error(`${featureLabel} ID tidak valid.`);
+                                    const kind = feature?.kind;
+                                    if (!['marker', 'area', 'path'].includes(kind)) throw new Error(`${featureLabel} bentuk tidak didukung.`);
+                                    const label = safeText(feature?.label, 100, `${featureLabel} label`);
+                                    if (!label) throw new Error(`${featureLabel} label wajib diisi.`);
+                                    const legendId = feature?.legendId ? safeText(feature.legendId, 64, `${featureLabel} kategori`) : null;
+                                    if (legendId && !legendIds.has(legendId)) throw new Error(`${featureLabel} memakai kategori legenda yang tidak ditemukan.`);
+                                    const x = campusDimension(feature?.x, `${featureLabel} posisi X`, { max: 1000 });
+                                    const y = campusDimension(feature?.y, `${featureLabel} posisi Y`, { max: 700 });
+                                    let width = 0;
+                                    let height = 0;
+                                    if (kind === 'area') {
+                                        width = campusDimension(feature?.width, `${featureLabel} lebar`, { min: 1, max: 1000 });
+                                        height = campusDimension(feature?.height, `${featureLabel} tinggi`, { min: 1, max: 700 });
+                                        if (x + width > 1000 || y + height > 700) throw new Error(`${featureLabel} berada di luar denah.`);
+                                    }
+                                    const points = kind === 'path'
+                                        ? safeList(feature?.points ?? [], {
+                                            maxItems: 64,
+                                            label: `${featureLabel} titik`,
+                                            map: (point, pointLabel) => ({
+                                                x: campusDimension(point?.x, `${pointLabel} X`, { max: 1000 }),
+                                                y: campusDimension(point?.y, `${pointLabel} Y`, { max: 700 })
+                                            })
+                                        })
+                                        : [];
+                                    if (kind === 'path' && points.length < 2) throw new Error(`${featureLabel} memerlukan minimal dua titik.`);
+                                    return {
+                                        id: featureId,
+                                        kind,
+                                        label,
+                                        description: safeText(feature?.description ?? '', 500, `${featureLabel} deskripsi`),
+                                        legendId,
+                                        x,
+                                        y,
+                                        width,
+                                        height,
+                                        points
+                                    };
+                                }
+                            });
+                            if (new Set(features.map(({ id }) => id)).size !== features.length) {
+                                throw new Error(`ID ${floorLabel} objek harus unik.`);
+                            }
+                            return { id: floorId, name: floorName, level, widthMeters, heightMeters, scaleDenominator, planImage, legend, features };
+                        }
+                    });
+                    if (new Set(floors.map(({ id }) => id)).size !== floors.length) {
+                        throw new Error(`ID ${buildingLabel} lantai harus unik.`);
+                    }
+                    return {
+                        id: buildingId,
+                        name: buildingName,
+                        description: safeText(building?.description ?? '', 500, `${buildingLabel} deskripsi`),
+                        latitude: buildingLatitude,
+                        longitude: buildingLongitude,
+                        floors
+                    };
+                }
+            });
+            if (new Set(buildings.map(({ id }) => id)).size !== buildings.length) {
+                throw new Error(`ID ${campusLabel} gedung harus unik.`);
+            }
+            return { id, name, address: safeText(campus?.address ?? '', 240, `${campusLabel} alamat`), latitude, longitude, buildings };
+        }
+    });
+    if (new Set(campuses.map(({ id }) => id)).size !== campuses.length) throw new Error('ID kampus harus unik.');
+    const publicWidgetVisible = input.publicWidgetVisible ?? true;
+    const defaultZoom = campusDimension(input.defaultZoom ?? 17, 'Zoom peta kampus', { min: 1, max: 20, integer: true });
+    return { navigationLabel, summary, publicWidgetVisible, defaultZoom, campuses };
+};
+
+const universityOrganizationKinds = new Set([
+    'university', 'rectorate', 'faculty', 'bureau', 'department', 'program', 'student-unit', 'other'
+]);
+
+const validateUniversityOrganization = (input) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        throw new Error('Bagan organisasi universitas tidak valid.');
+    }
+    const dateOnly = (value, label, optional = false) => {
+        if ((value === null || value === undefined || value === '') && optional) return null;
+        const date = safeText(value, 10, label);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`${label} harus berupa tanggal YYYY-MM-DD.`);
+        const parsed = new Date(`${date}T00:00:00.000Z`);
+        if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== date) {
+            throw new Error(`${label} tidak valid.`);
+        }
+        return date;
+    };
+    const validateId = (value, label) => {
+        const id = safeText(value, 64, label);
+        if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`${label} tidak valid.`);
+        return id;
+    };
+    const structures = safeList(input.structures ?? [], {
+        maxItems: 50,
+        label: 'Versi struktur universitas',
+        map: (structure, label) => {
+            if (!structure || typeof structure !== 'object' || Array.isArray(structure)) {
+                throw new Error(`${label} tidak valid.`);
+            }
+            const id = validateId(structure.id, `${label} ID`);
+            const name = safeText(structure.name, 120, `${label} nama periode`);
+            if (!name) throw new Error(`${label} nama periode wajib diisi.`);
+            const validFrom = dateOnly(structure.validFrom, `${label} tanggal mulai`);
+            const validUntil = dateOnly(structure.validUntil, `${label} tanggal akhir`, true);
+            if (validUntil && validUntil < validFrom) throw new Error(`${label} berakhir sebelum dimulai.`);
+            if (structure.repositorySyncedAt !== null && structure.repositorySyncedAt !== undefined) {
+                const syncedAt = safeText(structure.repositorySyncedAt, 40, `${label} waktu sinkronisasi`);
+                if (!syncedAt || Number.isNaN(Date.parse(syncedAt))) throw new Error(`${label} waktu sinkronisasi tidak valid.`);
+            }
+            const units = safeList(structure.units ?? [], {
+                maxItems: 250,
+                label: `${label} unit`,
+                map: (unit, unitLabel) => {
+                    if (!unit || typeof unit !== 'object' || Array.isArray(unit)) {
+                        throw new Error(`${unitLabel} tidak valid.`);
+                    }
+                    const unitId = validateId(unit.id, `${unitLabel} ID`);
+                    const unitName = safeText(unit.name, 120, `${unitLabel} nama`);
+                    if (!unitName) throw new Error(`${unitLabel} nama wajib diisi.`);
+                    if (!universityOrganizationKinds.has(unit.kind)) throw new Error(`${unitLabel} jenis tidak valid.`);
+                    const parentId = unit.parentId === null || unit.parentId === undefined || unit.parentId === ''
+                        ? null
+                        : validateId(unit.parentId, `${unitLabel} induk`);
+                    return {
+                        id: unitId,
+                        name: unitName,
+                        kind: unit.kind,
+                        parentId,
+                        description: safeText(unit.description ?? '', 500, `${unitLabel} deskripsi`)
+                    };
+                }
+            });
+            if (new Set(units.map(({ id: unitId }) => unitId)).size !== units.length) {
+                throw new Error(`ID unit pada ${label} harus unik.`);
+            }
+            const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+            for (const unit of units) {
+                if (unit.parentId && !unitsById.has(unit.parentId)) {
+                    throw new Error(`Induk unit ${unit.name} tidak ditemukan pada ${label}.`);
+                }
+                const visited = new Set([unit.id]);
+                let parentId = unit.parentId;
+                while (parentId) {
+                    if (visited.has(parentId)) throw new Error(`Hubungan unit pada ${label} tidak boleh membentuk siklus.`);
+                    visited.add(parentId);
+                    parentId = unitsById.get(parentId)?.parentId || null;
+                }
+            }
+            return {
+                id,
+                name,
+                validFrom,
+                validUntil,
+                repositorySyncedAt: structure.repositorySyncedAt || null,
+                units
+            };
+        }
+    });
+    if (new Set(structures.map(({ id }) => id)).size !== structures.length) {
+        throw new Error('ID versi struktur universitas harus unik.');
+    }
+    const intervals = structures.map((structure) => ({
+        start: structure.validFrom,
+        end: structure.validUntil || '9999-12-31',
+        name: structure.name
+    })).sort((first, second) => first.start.localeCompare(second.start));
+    for (let index = 1; index < intervals.length; index += 1) {
+        if (intervals[index].start <= intervals[index - 1].end) {
+            throw new Error(`Masa berlaku ${intervals[index - 1].name} dan ${intervals[index].name} bertumpang tindih.`);
+        }
+    }
+    return { structures };
+};
+
+const validateContentData = (data, assetExists, accountExists) => {
     if (!data || typeof data !== 'object') throw new Error('Koleksi konten tidak valid.');
-    const organizationStructure = validateOrganizationStructure(data.organizationStructure ?? { people: [], terms: [] });
+    const organizationStructure = validateOrganizationStructure(data.organizationStructure ?? { people: [], terms: [] }, accountExists);
+    const universityOrganization = validateUniversityOrganization(data.universityOrganization ?? emptyUniversityOrganization());
     const identityKeys = ['name', 'abbreviation', 'university', 'faculty', 'established', 'location', 'tagline', 'activeCadets', 'complianceRate'];
     const identity = Object.fromEntries(identityKeys.map((key) => [key, safeText(data.identity?.[key], 160, `Identitas ${key}`)]));
     identity.logo = data.identity?.logo === '' ? '' : validateAssetUrl(data.identity?.logo, 'Logo organisasi', assetExists);
@@ -511,6 +1052,7 @@ const validateContentData = (data, assetExists) => {
             safeText(data.visionMission?.sambutanKahim?.[key], key === 'quote' ? 2000 : 160, `Sambutan ${key}`)
         ]))
     };
+    const campusMap = validateCampusMap(data.campusMap ?? emptyCampusMap(), assetExists);
 
     const rawDepartments = Array.isArray(data.departments)
         ? data.departments
@@ -900,25 +1442,28 @@ const validateContentData = (data, assetExists) => {
         }
     }
 
-    return { identity, visionMission, departments, organizationStructure, knowledgeResources, generations, operators, news, doctrine: { adArt, cadetRoadmap, cadetQuiz } };
+    return {
+        identity,
+        visionMission,
+        departments,
+        organizationStructure,
+        universityOrganization,
+        knowledgeResources,
+        generations,
+        operators,
+        news,
+        campusMap,
+        doctrine: { adArt, cadetRoadmap, cadetQuiz }
+    };
 };
 
-export function validateSiteConfig(input, assetExists = () => false) {
+export function validateSiteConfig(input, assetExists = () => false, accountExists = () => true) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Konfigurasi situs tidak valid.');
     const theme = input.theme;
     if (!theme || typeof theme !== 'object') throw new Error('Pengaturan tema wajib tersedia.');
 
-    const colors = {};
-    for (const key of Object.keys(DEFAULT_SITE_CONFIG.theme.colors)) {
-        const color = theme.colors?.[key];
-        if (typeof color !== 'string' || !colorPattern.test(color)) throw new Error(`Warna ${key} harus berupa hex #RRGGBB.`);
-        colors[key] = color.toLowerCase();
-    }
-    if (contrastRatio(colors.text, colors.background) < 4.5) throw new Error('Kontras teks utama terhadap latar minimal 4.5:1.');
-    if (contrastRatio(colors.textMuted, colors.background) < 4.5) throw new Error('Kontras teks sekunder terhadap latar minimal 4.5:1.');
-    if ([colors.accent, colors.accentAlt, colors.danger, colors.success, colors.info].some((color) => contrastRatio(color, colors.background) < 3)) {
-        throw new Error('Kontras warna aksen dan status terhadap latar minimal 3:1.');
-    }
+    const colors = validateThemeColors(theme.colors, 'gelap');
+    const lightColors = validateThemeColors(theme.lightColors, 'cerah');
 
     const fonts = {};
     for (const key of ['body', 'heading', 'mono']) {
@@ -933,6 +1478,11 @@ export function validateSiteConfig(input, assetExists = () => false) {
     }
     if (!shapes.has(theme.shape) || !iconStyles.has(theme.iconStyle)) throw new Error('Preset bentuk atau ikon tidak didukung.');
     if (!contrasts.has(theme.contrast) || typeof theme.motion !== 'boolean') throw new Error('Pengaturan kontras atau animasi tidak valid.');
+    const dust = theme.dust === undefined ? DEFAULT_SITE_CONFIG.theme.dust : theme.dust;
+    if (!dust || !Number.isInteger(dust.density) || dust.density < 10 || dust.density > DUST_PERCENT_MAX
+        || !Number.isInteger(dust.opacity) || dust.opacity < 10 || dust.opacity > DUST_PERCENT_MAX) {
+        throw new Error('Kepadatan dan intensitas dust harus berupa bilangan bulat dari 10 sampai 500.');
+    }
     if (!theme.background || !backgroundModes.has(theme.background.mode)) throw new Error('Mode latar tidak didukung.');
     const backgroundImage = resolveBackgroundImage(theme.background);
     if (theme.background.mode === 'image' && !backgroundImage) {
@@ -966,17 +1516,95 @@ export function validateSiteConfig(input, assetExists = () => false) {
     for (const { id } of PAGE_BLOCKS.filter(({ id }) => id !== 'dashboard')) {
         sectionDescriptions[id] = safeText(content.sectionDescriptions?.[id], 1000, `Deskripsi ${id}`);
     }
+    const customPages = validateCustomPages(content.customPages);
+    const availableSidebarIds = [
+        ...pages.map(({ id }) => id),
+        ...customPages.map(({ id }) => `custom-${id}`)
+    ];
+    const sidebarOrder = content.sidebarOrder === undefined
+        ? availableSidebarIds
+        : content.sidebarOrder;
+    if (!Array.isArray(sidebarOrder)
+        || sidebarOrder.length !== availableSidebarIds.length
+        || sidebarOrder.some((id) => !availableSidebarIds.includes(id))
+        || new Set(sidebarOrder).size !== sidebarOrder.length) {
+        throw new Error('Urutan menu sidebar harus memuat setiap halaman tepat satu kali.');
+    }
+    const siteMapPageIds = availableSidebarIds.filter((id) => id !== 'site-map');
+    const siteMapNodeInput = content.siteMapNodes === undefined
+        ? normalizeSiteMapNodes(content, availableSidebarIds, customPages)
+        : content.siteMapNodes;
+    if (!Array.isArray(siteMapNodeInput)
+        || siteMapNodeInput.length < siteMapPageIds.length
+        || siteMapNodeInput.length > siteMapPageIds.length + 50) {
+        throw new Error('Struktur peta navigasi situs harus memuat semua halaman dan maksimal 50 kelompok.');
+    }
+    const siteMapPages = new Set();
+    const siteMapNodes = siteMapNodeInput.map((node) => {
+        if (!node || typeof node !== 'object' || Array.isArray(node) || typeof node.id !== 'string') {
+            throw new Error('Simpul peta navigasi situs tidak valid.');
+        }
+        const parentId = node.parentId ?? '';
+        if (typeof parentId !== 'string') throw new Error(`Induk simpul ${node.id} pada peta navigasi tidak valid.`);
+        if (node.type === 'page') {
+            if (!siteMapPageIds.includes(node.id) || siteMapPages.has(node.id)) {
+                throw new Error('Halaman pada peta navigasi situs mengandung ID tidak valid atau duplikat.');
+            }
+            siteMapPages.add(node.id);
+            return { id: node.id, type: 'page', parentId };
+        }
+        if (node.type === 'group') {
+            if (!/^group-[a-z0-9-]{1,70}$/.test(node.id)) throw new Error('ID kelompok peta navigasi tidak valid.');
+            if (parentId) throw new Error(`Kelompok ${node.id} harus berada pada tingkat utama.`);
+            const title = safeText(node.title, 80, `Nama kelompok ${node.id}`).trim();
+            if (!title) throw new Error(`Nama kelompok ${node.id} wajib diisi.`);
+            return { id: node.id, type: 'group', title, parentId: '' };
+        }
+        throw new Error(`Jenis simpul ${node.id} pada peta navigasi tidak didukung.`);
+    });
+    if (siteMapPages.size !== siteMapPageIds.length
+        || siteMapPageIds.some((id) => !siteMapPages.has(id))
+        || new Set(siteMapNodes.map(({ id }) => id)).size !== siteMapNodes.length) {
+        throw new Error('Setiap halaman selain Peta Navigasi Situs harus muncul tepat satu kali pada peta.');
+    }
+    const siteMapNodeById = new Map(siteMapNodes.map((node) => [node.id, node]));
+    for (const node of siteMapNodes) {
+        if (node.parentId && (!siteMapNodeById.has(node.parentId) || node.parentId === node.id)) {
+            throw new Error(`Induk simpul ${node.id} pada peta navigasi tidak valid.`);
+        }
+    }
+    for (const node of siteMapNodes) {
+        const visited = new Set([node.id]);
+        let parentId = node.parentId;
+        while (parentId) {
+            if (visited.has(parentId)) throw new Error('Hubungan induk peta navigasi situs tidak boleh membentuk siklus.');
+            visited.add(parentId);
+            parentId = siteMapNodeById.get(parentId)?.parentId || '';
+        }
+    }
     const heroActions = safeList(content.heroActions, { maxItems: 3, label: 'Tombol dashboard', map: (label, name) => safeText(label, 80, name) });
     if (heroActions.length !== 3) throw new Error('Tiga label tombol dashboard wajib tersedia.');
     const statLabels = Object.fromEntries(['activeCadets', 'divisionsCount', 'prokerCount', 'complianceRate'].map((key) => [
         key,
         safeText(content.statLabels?.[key], 80, `Label statistik ${key}`)
     ]));
-    const contentData = validateContentData(content.data, assetExists);
+    const contentData = validateContentData(content.data, assetExists, accountExists);
+    const governanceDocumentAccess = content.governanceDocumentAccess || DEFAULT_GOVERNANCE_DOCUMENT_ACCESS;
+    for (const [action, access] of Object.entries({
+        edit: governanceDocumentAccess.edit,
+        ratify: governanceDocumentAccess.ratify
+    })) {
+        if (!access || !Number.isInteger(access.clearance) || access.clearance < 1 || access.clearance > 3
+            || !POSITION_CAPABILITY_IDS.has(access.capability)
+            || !governanceDocumentCapabilities.has(access.capability)) {
+            throw new Error(`Aturan clearance dan capability untuk ${action === 'edit' ? 'penyuntingan' : 'pengesahan'} dokumen tidak valid.`);
+        }
+    }
 
     return {
         theme: {
             colors,
+            lightColors,
             fonts,
             typeScale: theme.typeScale,
             shape: theme.shape,
@@ -988,7 +1616,8 @@ export function validateSiteConfig(input, assetExists = () => false) {
             },
             heroImage,
             contrast: theme.contrast,
-            motion: theme.motion
+            motion: theme.motion,
+            dust: { density: dust.density, opacity: dust.opacity }
         },
         pages,
         content: {
@@ -998,6 +1627,13 @@ export function validateSiteConfig(input, assetExists = () => false) {
             statLabels,
             sectionDescriptions,
             sectionTitles,
+            sidebarOrder,
+            siteMapNodes,
+            customPages,
+            governanceDocumentAccess: {
+                edit: { clearance: governanceDocumentAccess.edit.clearance, capability: governanceDocumentAccess.edit.capability },
+                ratify: { clearance: governanceDocumentAccess.ratify.clearance, capability: governanceDocumentAccess.ratify.capability }
+            },
             data: contentData
         }
     };

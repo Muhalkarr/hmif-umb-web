@@ -9,7 +9,12 @@ test('encrypts confidential helpdesk text and detects tampering', () => {
   const encrypted = encryptPrivateText('Keluhan fasilitas privat', key);
   assert.notEqual(encrypted, 'Keluhan fasilitas privat');
   assert.equal(decryptPrivateText(encrypted, key), 'Keluhan fasilitas privat');
-  assert.throws(() => decryptPrivateText(`${encrypted.slice(0, -1)}x`, key), /terenkripsi/);
+  const [prefix, version, iv, authTag, ciphertext] = encrypted.split(':');
+  const tamperedCiphertext = `${ciphertext[0] === 'A' ? 'B' : 'A'}${ciphertext.slice(1)}`;
+  assert.throws(
+    () => decryptPrivateText([prefix, version, iv, authTag, tamperedCiphertext].join(':'), key),
+    /terenkripsi/
+  );
 });
 
 test('forces anonymous submissions to omit supplied identity', () => {

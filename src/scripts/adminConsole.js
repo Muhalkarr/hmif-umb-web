@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { getOrganizationTaskMetrics } from './organizationMetrics.js';
+import { hasWorkspaceCapability } from './workspace.js';
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -10,6 +11,12 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
 }[character]));
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString('id-ID') : '-';
+const operationsTips = [
+  'TIP OPERASIONAL // Gunakan submenu sidebar untuk berpindah modul tanpa menelusuri bagian lain.',
+  'TIP OPERASIONAL // Tinjau kembali detail formulir sebelum menyimpan perubahan.',
+  'TIP OPERASIONAL // Pilih satu panel dari sidebar; modul lain tetap tersedia di sana.',
+  'TIP OPERASIONAL // Periksa pesan status pada formulir setelah menjalankan tindakan.'
+];
 const getJakartaCalendarDate = () => {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -19,10 +26,11 @@ const getJakartaCalendarDate = () => {
 };
 
 export class AdminConsole {
-  constructor(api, { openModal, closeModal, getContainer, refreshData }) {
+  constructor(api, { openModal, closeModal, getContainer, getOperationsTabContainer, refreshData }) {
     this.api = api;
     this.openModal = openModal;
     this.getContainer = getContainer;
+    this.getOperationsTabContainer = getOperationsTabContainer;
     this.closeModal = () => {
       this.stopAllScanners();
       closeModal();
@@ -32,6 +40,7 @@ export class AdminConsole {
     this.tasks = [];
     this.taskAssignees = [];
     this.officeLetters = [];
+    this.activeOperationsModuleId = null;
     this.activeScanners = new Map();
   }
 
@@ -57,14 +66,17 @@ export class AdminConsole {
     ];
     const hasCareerManagementAccess = this.api.isSuperadmin || this.api.clearanceLevel >= 2;
     if (hasCareerManagementAccess) requests.push(this.api.getCareerMentorshipRequests());
-    const hasBphAccess = this.api.isSuperadmin || this.api.clearanceLevel >= 3;
+    const hasAspirationAccess = hasWorkspaceCapability(this.api.currentUser, 'aspirations.manage');
+    const hasFinancialAccess = hasWorkspaceCapability(this.api.currentUser, 'finance.manage');
+    const hasLpjSummaryAccess = hasWorkspaceCapability(this.api.currentUser, 'proker_lpj.view');
+    const hasDelegationManagementAccess = hasWorkspaceCapability(this.api.currentUser, 'delegations.manage');
     const hasKnowledgeModerationAccess = this.api.isSuperadmin || this.api.clearanceLevel >= 2;
-    const portfolioUser = this.api.currentUser;
     const hasPortfolioReviewAccess = this.api.isSuperadmin
-      || portfolioUser?.permissions?.includes('academic_curate')
-      || portfolioUser?.permissions?.includes('portfolio_review')
-      || (this.api.clearanceLevel >= 2 && /iptek|riset|research|litbang/i.test(`${portfolioUser?.division || ''} ${portfolioUser?.role_title || ''}`));
-    if (hasBphAccess) requests.push(this.api.getAspirations(), this.api.getFinancialLedger());
+      || hasWorkspaceCapability(this.api.currentUser, 'academic_curate')
+      || hasWorkspaceCapability(this.api.currentUser, 'portfolio_review');
+    if (hasAspirationAccess) requests.push(this.api.getAspirations());
+    if (hasFinancialAccess) requests.push(this.api.getFinancialLedger());
+    if (hasLpjSummaryAccess) requests.push(this.api.getLPJSummary());
     if (hasKnowledgeModerationAccess) requests.push(
       this.api.getPendingKnowledgeDiscussions()
     );
@@ -84,8 +96,9 @@ export class AdminConsole {
     const tutoringTutorsResult = results[index++];
     const taskAssigneesResult = results[index++];
     const careerMentorshipResult = hasCareerManagementAccess ? results[index++] : null;
-    const aspirationsResult = hasBphAccess ? results[index++] : null;
-    const ledgerResult = hasBphAccess ? results[index++] : null;
+    const aspirationsResult = hasAspirationAccess ? results[index++] : null;
+    const ledgerResult = hasFinancialAccess ? results[index++] : null;
+    const lpjSummaryResult = hasLpjSummaryAccess ? results[index++] : null;
     const knowledgeDiscussionsResult = hasKnowledgeModerationAccess ? results[index++] : null;
     const techArticlesResult = hasPortfolioReviewAccess ? results[index++] : null;
     const projectCallsResult = hasPortfolioReviewAccess ? results[index++] : null;
@@ -99,10 +112,14 @@ export class AdminConsole {
     this.officeLetters = officeLettersResult.ok && Array.isArray(officeLettersResult.data?.letters) ? officeLettersResult.data.letters : [];
     const calendar = calendarResult.ok && Array.isArray(calendarResult.data) ? calendarResult.data : [];
     const errors = results.filter((result) => !result.ok).map((result) => result.error);
+    const statusMarkup = errors.length
+      ? errors.map(escapeHtml).join('<br>')
+      : `<span class="operations-console-tip">${escapeHtml(operationsTips[Math.floor(Math.random() * operationsTips.length)])}</span>`;
 
     body.innerHTML = `
-      <p class="auth-feedback" role="status">${errors.map(escapeHtml).join('<br>')}</p>
+      <p class="auth-feedback operations-console-status${errors.length ? '' : ' operations-console-status--tip'}" role="status">${statusMarkup}</p>
       ${this.renderTaskBoard()}
+      ${hasLpjSummaryAccess ? this.renderLpjSummary(lpjSummaryResult) : ''}
       ${hasPortfolioReviewAccess ? this.renderPortfolioReviewQueue(techArticlesResult, projectCallsResult) : ''}
       ${hasCareerManagementAccess ? this.renderCareerMentorshipQueue(careerMentorshipResult) : ''}
       ${this.renderOfficeDocuments()}
@@ -119,14 +136,13 @@ export class AdminConsole {
             <label class="form-group"><span class="form-label">STATUS</span><select class="form-select" name="status"><option value="upcoming">Rencana</option><option value="active">Berjalan</option><option value="completed">Selesai</option></select></label>
             <label class="form-group"><span class="form-label">MULAI</span><input class="form-input" name="date_start" type="date" required /></label>
             <label class="form-group"><span class="form-label">SELESAI</span><input class="form-input" name="date_end" type="date" required /></label>
-            <label class="form-group"><span class="form-label">ANGGARAN</span><input class="form-input" name="budget_allocated" type="number" min="0" step="1000" /></label>
+            ${hasFinancialAccess ? '<label class="form-group"><span class="form-label">ANGGARAN</span><input class="form-input" name="budget_allocated" type="number" min="0" step="1000" /></label>' : ''}
           </div>
           <label class="form-label" for="admin-proker-target">SASARAN</label>
           <input class="form-input" id="admin-proker-target" name="target_participants" maxlength="240" />
           <label class="form-label" for="admin-proker-kpi">INDIKATOR</label>
           <input class="form-input" id="admin-proker-kpi" name="kpi_indicator" maxlength="500" />
-          <label class="form-label" for="admin-proker-notes">CATATAN</label>
-          <textarea class="form-textarea" id="admin-proker-notes" name="lpj_notes" maxlength="3000"></textarea>
+          ${hasFinancialAccess ? '<label class="form-label" for="admin-proker-notes">CATATAN LPJ</label><textarea class="form-textarea" id="admin-proker-notes" name="lpj_notes" maxlength="3000"></textarea>' : ''}
           <p class="auth-feedback" data-form-feedback="proker" role="status"></p>
           <button class="btn-tactical primary" type="submit">SIMPAN PROGRAM</button>
           <button class="btn-tactical" type="reset">BERSIHKAN FORM</button>
@@ -155,12 +171,14 @@ export class AdminConsole {
           <button class="btn-tactical primary" type="submit">TAMBAH KE KALENDER</button>
         </form>
       </section>
-      ${this.renderDelegations(delegationsResult)}
+      ${this.renderDelegations(delegationsResult, hasDelegationManagementAccess)}
       ${this.renderAttendanceSessionOperations(calendar)}
       ${this.renderTutoringOperations(tutoringRequestsResult, tutoringTutorsResult)}
       ${this.renderEventRegistrationOperations(calendar)}
       ${hasKnowledgeModerationAccess ? this.renderKnowledgeDiscussionModeration(knowledgeDiscussionsResult) : ''}
-      ${hasBphAccess ? this.renderBphSections(aspirationsResult, ledgerResult) : ''}
+      ${(hasAspirationAccess || hasFinancialAccess)
+        ? this.renderBphSections(aspirationsResult, ledgerResult, hasAspirationAccess, hasFinancialAccess)
+        : ''}
       ${this.api.isSuperadmin ? this.renderUsers(usersResult) : ''}
       ${this.api.isSuperadmin ? this.renderAuditLogsSection(auditLogsResult) : ''}
       ${this.api.isSuperadmin ? '<button class="btn-tactical primary" type="button" data-open-site-studio>BUKA SITE STUDIO</button>' : ''}
@@ -178,7 +196,7 @@ export class AdminConsole {
     this.bindEventRegistrationForms(body);
     if (hasKnowledgeModerationAccess) this.bindKnowledgeDiscussionModeration(body);
     if (hasPortfolioReviewAccess) this.bindPortfolioReviewQueue(body);
-    if (hasBphAccess) this.bindBphForms(body, aspirationsResult);
+    if (hasAspirationAccess || hasFinancialAccess) this.bindBphForms(body, aspirationsResult);
     this.bindDelegationForms(body);
     if (this.api.isSuperadmin) {
       this.bindUserForms(body, usersResult);
@@ -197,28 +215,54 @@ export class AdminConsole {
         if (!section.id) section.id = `operations-module-${index + 1}`;
         return {
           id: section.id,
-          title: heading.textContent.trim().replace(/\s+\/\/.*/, '').replace(/\s+/g, ' ')
+          title: heading.textContent.trim().replace(/\s+\/\/.*/, '').replace(/\s+/g, ' '),
+          section
         };
       })
       .filter(Boolean);
     if (!modules.length) return;
 
+    if (!modules.some(({ id }) => id === this.activeOperationsModuleId)) {
+      this.activeOperationsModuleId = modules[0].id;
+    }
+    modules.forEach(({ id, section }) => {
+      section.hidden = id !== this.activeOperationsModuleId;
+    });
+
     const navigation = document.createElement('nav');
     navigation.className = 'operations-module-nav';
     navigation.setAttribute('aria-label', 'Akses cepat modul operasional');
     navigation.innerHTML = modules.map(({ id, title }) => `
-      <button type="button" data-operations-target="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}">${escapeHtml(title)}</button>
+      <button type="button" class="workspace-nav-link" data-nav-entry data-nav-label="${escapeHtml(title.toLocaleLowerCase())}"
+        data-operations-target="${escapeHtml(id)}" aria-controls="${escapeHtml(id)}">${escapeHtml(title)}</button>
     `).join('');
+    const navigationContainer = this.getOperationsTabContainer?.();
+    if (navigationContainer) {
+      navigation.classList.add('operations-module-nav--sidebar');
+      navigationContainer.replaceChildren(navigation);
+    }
     navigation.querySelectorAll('[data-operations-target]').forEach((button) => {
       button.addEventListener('click', () => {
-        const target = container.querySelector(`#${CSS.escape(button.dataset.operationsTarget)}`);
-        target?.scrollIntoView({
+        const targetModule = modules.find(({ id }) => id === button.dataset.operationsTarget);
+        if (!targetModule) return;
+
+        this.activeOperationsModuleId = targetModule.id;
+        modules.forEach(({ id, section }) => {
+          section.hidden = id !== targetModule.id;
+        });
+        navigation.querySelectorAll('[data-operations-target]').forEach((item) => {
+          item.removeAttribute('aria-current');
+        });
+        button.setAttribute('aria-current', 'location');
+        targetModule.section.scrollIntoView({
           behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
           block: 'start'
         });
       });
     });
-    container.prepend(navigation);
+    if (!navigationContainer) container.prepend(navigation);
+    navigation.querySelector(`[data-operations-target="${CSS.escape(this.activeOperationsModuleId)}"]`)
+      ?.setAttribute('aria-current', 'location');
   }
 
   renderProkerList() {
@@ -229,6 +273,31 @@ export class AdminConsole {
         <button class="btn-tactical" type="button" data-edit-proker="${escapeHtml(item.id)}">EDIT</button>
       </div>
     `).join('');
+  }
+
+  renderLpjSummary(result) {
+    const data = result?.ok ? result.data : null;
+    const summary = data?.summary;
+    const divisions = Object.entries(data?.division_summary || {});
+    if (!summary) {
+      return '<section class="admin-section"><h3>RINGKASAN LPJ</h3><p>Ringkasan LPJ tidak dapat dimuat.</p></section>';
+    }
+    const currency = (amount) => `Rp ${Number(amount || 0).toLocaleString('id-ID')}`;
+    return `
+      <section class="admin-section">
+        <h3>RINGKASAN LPJ & ANGGARAN</h3>
+        <div class="workspace-feature-stats">
+          <div><span>PROGRAM SELESAI</span><strong>${escapeHtml(summary.completed_proker)} / ${escapeHtml(summary.total_proker)}</strong></div>
+          <div><span>ANGGARAN DIALOKASIKAN</span><strong>${escapeHtml(currency(summary.total_budget_allocated))}</strong></div>
+          <div><span>REALISASI</span><strong>${escapeHtml(currency(summary.total_budget_spent))}</strong></div>
+          <div><span>TINGKAT PENYELESAIAN</span><strong>${escapeHtml(summary.completion_rate)}%</strong></div>
+        </div>
+        <div class="admin-record-list">${divisions.map(([division, metrics]) => `
+          <p>${escapeHtml(division)} // ${escapeHtml(metrics.completed)} / ${escapeHtml(metrics.total)} selesai
+            // Dialokasikan ${escapeHtml(currency(metrics.budget_allocated))}
+            // Terpakai ${escapeHtml(currency(metrics.budget_spent))}</p>
+        `).join('') || '<p>Belum ada data LPJ per divisi.</p>'}</div>
+      </section>`;
   }
 
   renderOfficeDocuments(letters = this.officeLetters) {
@@ -367,11 +436,11 @@ export class AdminConsole {
     });
   }
 
-  renderBphSections(aspirationsResult, ledgerResult) {
+  renderBphSections(aspirationsResult, ledgerResult, canManageAspirations, canManageFinance) {
     const aspirations = aspirationsResult?.ok && Array.isArray(aspirationsResult.data) ? aspirationsResult.data : [];
     const ledger = ledgerResult?.ok ? ledgerResult.data : null;
     return `
-      <section class="admin-section">
+      ${canManageAspirations ? `<section class="admin-section">
         <h3>ASPIRASI // ${aspirations.length}</h3>
         ${aspirations.map((item) => `
           <form class="admin-form admin-response-form" data-aspiration-id="${escapeHtml(item.id)}">
@@ -399,8 +468,8 @@ export class AdminConsole {
             <button class="btn-tactical primary" type="submit">SIMPAN TANGGAPAN</button>
           </form>
         `).join('') || '<p>Belum ada aspirasi.</p>'}
-      </section>
-      <section class="admin-section">
+      </section>` : ''}
+      ${canManageFinance ? `<section class="admin-section">
         <h3>BUKU KAS // SALDO ${escapeHtml(ledger?.summary?.balance ?? 0)}</h3>
         <div class="admin-record-list">${(ledger?.transactions || []).slice(0, 12).map((item) => `
           <article class="admin-record-row">
@@ -425,7 +494,7 @@ export class AdminConsole {
           <div data-ledger-receipt-preview></div>
           <button class="btn-tactical" type="button" data-ledger-receipt-close>TUTUP</button>
         </dialog>
-      </section>
+      </section>` : ''}
     `;
   }
 
@@ -566,10 +635,10 @@ export class AdminConsole {
         form.elements.status.value = item.status || 'upcoming';
         form.elements.date_start.value = item.date_start || '';
         form.elements.date_end.value = item.date_end || item.date_start || '';
-        form.elements.budget_allocated.value = item.budget_allocated || 0;
+        if (form.elements.budget_allocated) form.elements.budget_allocated.value = item.budget_allocated || 0;
         form.elements.target_participants.value = item.target_participants || '';
         form.elements.kpi_indicator.value = item.kpi_indicator || '';
-        form.elements.lpj_notes.value = item.lpj_notes || '';
+        if (form.elements.lpj_notes) form.elements.lpj_notes.value = item.lpj_notes || '';
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
@@ -578,7 +647,7 @@ export class AdminConsole {
       const values = Object.fromEntries(new FormData(form));
       const id = values.id;
       delete values.id;
-      values.budget_allocated = Number(values.budget_allocated) || 0;
+      if (Object.hasOwn(values, 'budget_allocated')) values.budget_allocated = Number(values.budget_allocated) || 0;
       const result = id ? await this.api.updateProker(id, values) : await this.api.createProker(values);
       feedback.textContent = result.ok ? 'PROGRAM TERSIMPAN' : result.error;
       if (result.ok) await this.refreshData();
@@ -634,7 +703,7 @@ export class AdminConsole {
             </section>`;
   }
 
-  renderDelegations(delegationsResult) {
+  renderDelegations(delegationsResult, canManageDelegations) {
     const delegations = delegationsResult?.ok && Array.isArray(delegationsResult.data) ? delegationsResult.data : [];
     return `
       <section class="admin-section">
@@ -670,7 +739,7 @@ export class AdminConsole {
                   </div>
                 ` : '')}
 
-                <form class="admin-delegation-update-form admin-form" data-delegation-id="${escapeHtml(del.id)}" style="margin-top: 0.5rem; width: 100%; background: rgba(255,255,255,0.02); padding: 0.5rem;">
+                ${canManageDelegations ? `<form class="admin-delegation-update-form admin-form" data-delegation-id="${escapeHtml(del.id)}" style="margin-top: 0.5rem; width: 100%; background: rgba(255,255,255,0.02); padding: 0.5rem;">
                   <div class="admin-form-grid">
                     <label class="form-group"><span class="form-label">UPDATE STATUS</span>
                       <select class="form-select" name="status">
@@ -698,7 +767,7 @@ export class AdminConsole {
                   </label>
                   <p class="auth-feedback" role="status"></p>
                   <button class="btn-tactical primary" type="submit" style="margin-top: 0.25rem;">SIMPAN STATUS DELEGASI</button>
-                </form>
+                </form>` : ''}
               </article>
             `;
     }).join('') || '<p>Belum ada permohonan delegasi terdaftar.</p>'}
@@ -1211,7 +1280,7 @@ export class AdminConsole {
   bindBphForms(body, aspirationsResult) {
     body.querySelectorAll('.admin-response-form').forEach((form) => {
       const status = form.querySelector('[name="status"]');
-      const aspiration = aspirationsResult.data.find((item) => item.id === form.dataset.aspirationId);
+      const aspiration = aspirationsResult?.data?.find((item) => item.id === form.dataset.aspirationId);
       if (aspiration) {
         const currentStatus = aspiration.status === 'Ditinjau' ? 'Dalam Investigasi' : aspiration.status;
         if ([...status.options].some((option) => option.value === currentStatus)) status.value = currentStatus;
@@ -1232,45 +1301,47 @@ export class AdminConsole {
     });
 
     const ledgerForm = body.querySelector('#admin-ledger-form');
-    const ledgerFeedback = body.querySelector('[data-form-feedback="ledger"]');
-    const ledgerReceiptField = ledgerForm.querySelector('[data-ledger-receipt-field]');
-    const updateReceiptRequirement = () => {
-      const required = ledgerForm.elements.type.value === 'EXPENSE';
-      ledgerReceiptField.hidden = !required;
-      ledgerForm.elements.receipt.required = required;
-    };
-    ledgerForm.elements.type.addEventListener('change', updateReceiptRequirement);
-    updateReceiptRequirement();
-    ledgerForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const payload = Object.fromEntries(new FormData(ledgerForm));
-      const receiptFile = payload.receipt;
-      delete payload.receipt;
-      const result = await this.api.addTransaction(payload, receiptFile?.size ? receiptFile : null);
-      ledgerFeedback.textContent = result.ok ? 'TRANSAKSI TERSIMPAN' : result.error;
-      if (result.ok) await this.refreshData();
-    });
+    if (ledgerForm) {
+      const ledgerFeedback = body.querySelector('[data-form-feedback="ledger"]');
+      const ledgerReceiptField = ledgerForm.querySelector('[data-ledger-receipt-field]');
+      const updateReceiptRequirement = () => {
+        const required = ledgerForm.elements.type.value === 'EXPENSE';
+        ledgerReceiptField.hidden = !required;
+        ledgerForm.elements.receipt.required = required;
+      };
+      ledgerForm.elements.type.addEventListener('change', updateReceiptRequirement);
+      updateReceiptRequirement();
+      ledgerForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const payload = Object.fromEntries(new FormData(ledgerForm));
+        const receiptFile = payload.receipt;
+        delete payload.receipt;
+        const result = await this.api.addTransaction(payload, receiptFile?.size ? receiptFile : null);
+        ledgerFeedback.textContent = result.ok ? 'TRANSAKSI TERSIMPAN' : result.error;
+        if (result.ok) await this.refreshData();
+      });
 
-    const receiptDialog = body.querySelector('.ledger-receipt-dialog');
-    receiptDialog.querySelector('[data-ledger-receipt-close]').addEventListener('click', () => receiptDialog.close());
-    body.querySelectorAll('[data-ledger-receipt]').forEach((button) => button.addEventListener('click', () => {
-      const preview = receiptDialog.querySelector('[data-ledger-receipt-preview]');
-      const source = `/api/ledger/receipts/${encodeURIComponent(button.dataset.ledgerReceipt)}`;
-      receiptDialog.querySelector('[data-ledger-receipt-title]').textContent = button.dataset.ledgerName;
-      preview.replaceChildren();
-      if (button.dataset.ledgerMime === 'application/pdf') {
-        const frame = document.createElement('iframe');
-        frame.src = source;
-        frame.title = `Bukti transaksi ${button.dataset.ledgerName}`;
-        preview.append(frame);
-      } else {
-        const image = document.createElement('img');
-        image.src = source;
-        image.alt = `Bukti transaksi ${button.dataset.ledgerName}`;
-        preview.append(image);
-      }
-      receiptDialog.showModal();
-    }));
+      const receiptDialog = body.querySelector('.ledger-receipt-dialog');
+      receiptDialog.querySelector('[data-ledger-receipt-close]').addEventListener('click', () => receiptDialog.close());
+      body.querySelectorAll('[data-ledger-receipt]').forEach((button) => button.addEventListener('click', () => {
+        const preview = receiptDialog.querySelector('[data-ledger-receipt-preview]');
+        const source = `/api/ledger/receipts/${encodeURIComponent(button.dataset.ledgerReceipt)}`;
+        receiptDialog.querySelector('[data-ledger-receipt-title]').textContent = button.dataset.ledgerName;
+        preview.replaceChildren();
+        if (button.dataset.ledgerMime === 'application/pdf') {
+          const frame = document.createElement('iframe');
+          frame.src = source;
+          frame.title = `Bukti transaksi ${button.dataset.ledgerName}`;
+          preview.append(frame);
+        } else {
+          const image = document.createElement('img');
+          image.src = source;
+          image.alt = `Bukti transaksi ${button.dataset.ledgerName}`;
+          preview.append(image);
+        }
+        receiptDialog.showModal();
+      }));
+    }
   }
 
   bindInterventionActions(body) {

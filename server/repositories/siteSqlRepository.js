@@ -14,6 +14,24 @@ export const createSiteSqlRepository = ({ sqlite, read, insertAudit }) => {
     };
   },
 
+  getSecurityNotice() {
+    const notice = sqlite.prepare('SELECT status, message, updated_at, updated_by FROM security_notice WHERE id = 1').get();
+    return {
+      status: notice.status,
+      message: notice.message,
+      updatedAt: notice.updated_at,
+      updatedBy: notice.updated_by
+    };
+  },
+
+  setSecurityNotice(status, message, actorNim) {
+    const updatedAt = new Date().toISOString();
+    sqlite.prepare(`UPDATE security_notice
+      SET status = ?, message = ?, updated_at = ?, updated_by = ?
+      WHERE id = 1`).run(status, message, updatedAt, actorNim);
+    return repo.getSecurityNotice();
+  },
+
   saveSiteDraft(config, actorNim, restoredFrom = null, expectedRevisionId = null) {
     const id = randomUUID();
     const timestamp = new Date().toISOString();
@@ -92,6 +110,10 @@ export const createSiteSqlRepository = ({ sqlite, read, insertAudit }) => {
     if (!id) return false;
     if (kind === 'knowledge') return Boolean(sqlite.prepare('SELECT 1 FROM knowledge_files WHERE id = ?').get(id));
     return Boolean(sqlite.prepare('SELECT 1 FROM site_assets WHERE id = ? AND (? IS NULL OR kind = ?)').get(id, kind || null, kind || null));
+  },
+
+  accountExists(accountId) {
+    return read().users.some((user) => user.account_id === accountId);
   },
 
   listAssets() {

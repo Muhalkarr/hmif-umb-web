@@ -1,0 +1,79 @@
+.security-incident-notice {
+  position: sticky;
+  top: 0;
+  z-index: 20000;
+  padding: 0.8rem clamp(1rem, 3vw, 2rem);
+  border-bottom: 2px solid #e34f58;
+  background: #35161b;
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.security-incident-notice[hidden] {
+  display: none;
+}
+
+.security-incident-notice-content {
+  width: min(100%, 1400px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(12rem, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem 1rem;
+}
+
+.security-incident-notice strong {
+  color: #ffb1b5;
+  font-family: var(--font-title);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+}
+
+.security-incident-notice p {
+  margin: 0;
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.security-incident-notice a {
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.security-incident-notice[data-status="investigating"] {
+  border-bottom-color: #e3aa42;
+  background: #352a16;
+}
+
+.security-incident-notice[data-status="investigating"] strong {
+  color: #ffd887;
+}
+
+.security-incident-notice[data-status="recovering"] {
+  border-bottom-color: #58aee3;
+  background: #152b38;
+}
+
+.security-incident-notice[data-status="recovering"] strong {
+  color: #a7ddff;
+}
+
+body.has-security-notice .prts-sticky-header {
+  top: var(--security-notice-height, 0px);
+}
+
+@media (max-width: 720px) {
+  .security-incident-notice-content {
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem 0.75rem;
+  }
+
+  .security-incident-notice p {
+    grid-column: 1 / -1;
+    font-size: 0.82rem;
+  }
+}

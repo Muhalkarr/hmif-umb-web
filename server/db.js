@@ -12,14 +12,22 @@ import Sqlite from 'better-sqlite3';
 import { DEFAULT_SITE_CONFIG, configReferencesAsset, withSiteDefaults } from './siteSchema.js';
 import { createSiteSqlRepository } from './repositories/siteSqlRepository.js';
 import { createAcademicSqlRepository } from './repositories/academicSqlRepository.js';
+import { createSocialSqlRepository } from './repositories/socialSqlRepository.js';
 import { createUserSqlRepository } from './repositories/userSqlRepository.js';
 import { createEventsSqlRepository } from './repositories/eventsSqlRepository.js';
 import { createOperationsSqlRepository } from './repositories/operationsSqlRepository.js';
 import { createInventorySqlRepository } from './repositories/inventorySqlRepository.js';
 import { createFinanceAndAspirationsSqlRepository } from './repositories/financeAndAspirationsSqlRepository.js';
 import { createPortalSqlRepository } from './repositories/portalSqlRepository.js';
+import { createVotingSqlRepository } from './repositories/votingSqlRepository.js';
+import { createGovernanceDocumentsSqlRepository, initializeGovernanceDocumentsSchema } from './repositories/governanceDocumentsSqlRepository.js';
+import { getActiveTermPositionAccess, getPositionCapabilitiesForAccount, POSITION_CAPABILITY_IDS } from '../shared/positionAccess.js';
 import { loadInitialDatabaseSeed } from './databaseBootstrap.js';
 import { rankTutorCandidates } from './academicFeatures.js';
+import {
+  DEFAULT_STUDENT_DEMOGRAPHIC_SETTINGS,
+  validateStudentDemographicValues
+} from './studentDemographics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -444,6 +452,7 @@ class Database {
       insertAudit: this.insertAudit.bind(this),
       findUserById: this.findUserById.bind(this)
     });
+    this.socialRepository = createSocialSqlRepository({ sqlite: this.sqlite });
     this.userSqlRepository = createUserSqlRepository({
       sqlite: this.sqlite,
       read: this.read.bind(this),
@@ -473,8 +482,14 @@ class Database {
       sqlite: this.sqlite,
       getHmifCalendarDate
     });
+    this.votingRepository = createVotingSqlRepository({ sqlite: this.sqlite });
+    this.governanceDocumentsRepository = createGovernanceDocumentsSqlRepository({
+      sqlite: this.sqlite,
+      insertAudit: this.insertAudit.bind(this)
+    });
     this.sqlite.pragma('busy_timeout = 5000');
     this.initializeSchema();
+    initializeGovernanceDocumentsSchema(this.sqlite);
   }
 
   initializeSchema() {
@@ -510,6 +525,40 @@ class Database {
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_applicant ON delegations(applicant_account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
+      CREATE TABLE IF NOT EXISTS voting_polls (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'closed')),
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_voting_polls_status_dates
+        ON voting_polls(status, start_date DESC, created_at DESC);
+      CREATE TABLE IF NOT EXISTS voting_candidates (
+        id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL REFERENCES voting_polls(id) ON DELETE CASCADE,
+        candidate_number INTEGER NOT NULL CHECK (candidate_number > 0),
+        candidate_name TEXT NOT NULL,
+        candidate_nim TEXT NOT NULL DEFAULT '',
+        vision_mission TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE (poll_id, candidate_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_voting_candidates_poll
+        ON voting_candidates(poll_id, candidate_number);
+      CREATE TABLE IF NOT EXISTS voting_votes (
+        id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL REFERENCES voting_polls(id) ON DELETE CASCADE,
+        voter_nim TEXT NOT NULL,
+        candidate_id TEXT NOT NULL REFERENCES voting_candidates(id) ON DELETE CASCADE,
+        voted_at TEXT NOT NULL,
+        UNIQUE (poll_id, voter_nim)
+      );
+      CREATE INDEX IF NOT EXISTS idx_voting_votes_poll ON voting_votes(poll_id);
       CREATE TABLE IF NOT EXISTS site_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         draft_json TEXT NOT NULL,
@@ -517,6 +566,15 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
         draft_revision_id TEXT,
         published_revision_id TEXT
       );
+      CREATE TABLE IF NOT EXISTS security_notice (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        status TEXT NOT NULL CHECK (status IN ('normal', 'investigating', 'incident', 'recovering')),
+        message TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL
+      );
+      INSERT OR IGNORE INTO security_notice (id, status, message, updated_at, updated_by)
+        VALUES (1, 'normal', '', '1970-01-01T00:00:00.000Z', 'system');
       CREATE TABLE IF NOT EXISTS site_revisions (
         id TEXT PRIMARY KEY,
         version INTEGER NOT NULL UNIQUE,
@@ -527,6 +585,32 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
         published_at TEXT,
         restored_from TEXT REFERENCES site_revisions(id)
       );
+      CREATE TABLE IF NOT EXISTS organization_position_capabilities (
+        term_id TEXT NOT NULL,
+        position_id TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (term_id, position_id, capability)
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_position_capabilities_position
+        ON organization_position_capabilities(term_id, position_id);
+      CREATE TABLE IF NOT EXISTS student_demographic_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        settings_json TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS student_demographic_custom_values (
+        account_id TEXT NOT NULL,
+        field_id TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, field_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_student_demographic_custom_values_account
+        ON student_demographic_custom_values(account_id);
       CREATE TABLE IF NOT EXISTS site_assets (
         id TEXT PRIMARY KEY,
         stored_name TEXT NOT NULL UNIQUE,
@@ -544,7 +628,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
         title TEXT NOT NULL,
         source_type TEXT NOT NULL CHECK (source_type IN ('upload', 'url')),
         source_url TEXT,
-        stored_name TEXT UNIQUE,
+        stored_name TEXT,
         mime_type TEXT,
         size INTEGER,
         sha256 TEXT,
@@ -607,6 +691,56 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       );
       CREATE INDEX IF NOT EXISTS idx_knowledge_discussions_resource ON knowledge_discussions(resource_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_knowledge_discussions_status ON knowledge_discussions(status, created_at);
+      CREATE TABLE IF NOT EXISTS social_posts (
+        id TEXT PRIMARY KEY,
+        author_account_id TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 3000),
+        status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'hidden', 'deleted')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_social_posts_feed ON social_posts(status, created_at DESC, id DESC);
+      CREATE TABLE IF NOT EXISTS social_comments (
+        id TEXT PRIMARY KEY,
+        post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+        parent_id TEXT REFERENCES social_comments(id) ON DELETE CASCADE,
+        author_account_id TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 2000),
+        status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'deleted')),
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_social_comments_post ON social_comments(post_id, status, created_at, id);
+      CREATE TABLE IF NOT EXISTS social_reactions (
+        post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+        account_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (post_id, account_id)
+      );
+      CREATE TABLE IF NOT EXISTS social_reports (
+        id TEXT PRIMARY KEY,
+        post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+        reporter_account_id TEXT NOT NULL,
+        reporter_name TEXT NOT NULL,
+        reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 500),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'dismissed')),
+        resolution_note TEXT NOT NULL DEFAULT '',
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE (post_id, reporter_account_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_social_reports_queue ON social_reports(status, created_at);
+      CREATE TABLE IF NOT EXISTS social_moderation_history (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL REFERENCES social_reports(id) ON DELETE CASCADE,
+        post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+        moderator_account_id TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('hide', 'dismiss')),
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS academic_resources (
         id TEXT PRIMARY KEY,
         payload_json TEXT NOT NULL,
@@ -679,6 +813,121 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       );
       CREATE INDEX IF NOT EXISTS idx_tutoring_requests_student ON tutoring_requests(student_account_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_tutoring_requests_status ON tutoring_requests(status, created_at);
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('akun', 'akademik', 'teknis', 'event', 'lainnya')),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status_updated ON support_tickets(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_account_updated ON support_tickets(account_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS support_ticket_messages (
+        id TEXT PRIMARY KEY,
+        ticket_id TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+        account_id TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket ON support_ticket_messages(ticket_id, created_at);
+      CREATE TABLE IF NOT EXISTS learning_enrollments (
+        account_id TEXT NOT NULL,
+        learning_path_id TEXT NOT NULL REFERENCES academic_learning_paths(id) ON DELETE CASCADE,
+        completed_milestones_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, learning_path_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_learning_enrollments_account ON learning_enrollments(account_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS organization_meetings (
+        id TEXT PRIMARY KEY,
+        series_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        agenda TEXT NOT NULL DEFAULT '',
+        location TEXT NOT NULL DEFAULT '',
+        video_mode TEXT NOT NULL DEFAULT 'in_person'
+          CHECK (video_mode IN ('in_person', 'livekit', 'external')),
+        starts_at TEXT NOT NULL,
+        ends_at TEXT NOT NULL,
+        organizer_account_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'cancelled')),
+        recurrence_rule_json TEXT,
+        minutes TEXT NOT NULL DEFAULT '',
+        decisions_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_meetings_organizer_date
+        ON organization_meetings(organizer_account_id, starts_at);
+      CREATE INDEX IF NOT EXISTS idx_organization_meetings_series ON organization_meetings(series_id, starts_at);
+      CREATE TABLE IF NOT EXISTS organization_meeting_attendees (
+        meeting_id TEXT NOT NULL REFERENCES organization_meetings(id) ON DELETE CASCADE,
+        account_id TEXT NOT NULL,
+        response TEXT NOT NULL DEFAULT 'invited'
+          CHECK (response IN ('invited', 'accepted', 'declined', 'attended', 'absent')),
+        responded_at TEXT,
+        attendance_marked_by TEXT,
+        attendance_marked_at TEXT,
+        PRIMARY KEY (meeting_id, account_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_meeting_attendees_account
+        ON organization_meeting_attendees(account_id, meeting_id);
+      CREATE TABLE IF NOT EXISTS organization_meeting_actions (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES organization_meetings(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        assignee_account_id TEXT,
+        due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+        created_by_account_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_meeting_actions_meeting
+        ON organization_meeting_actions(meeting_id, created_at);
+      CREATE TABLE IF NOT EXISTS organization_meeting_documents (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES organization_meetings(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        stored_name TEXT UNIQUE,
+        original_name TEXT NOT NULL DEFAULT '',
+        size INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT NOT NULL DEFAULT '',
+        created_by_account_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_meeting_documents_meeting
+        ON organization_meeting_documents(meeting_id, created_at);
+      CREATE TABLE IF NOT EXISTS organization_meeting_recordings (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES organization_meetings(id) ON DELETE CASCADE,
+        egress_id TEXT UNIQUE,
+        storage_key TEXT UNIQUE,
+        status TEXT NOT NULL DEFAULT 'starting'
+          CHECK (status IN ('starting', 'recording', 'stopping', 'completed', 'failed', 'expired')),
+        notice_confirmed_by TEXT NOT NULL,
+        notice_confirmed_at TEXT NOT NULL,
+        started_by_account_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        stopped_at TEXT,
+        expires_at TEXT NOT NULL,
+        failure_code TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_meeting_recordings_meeting
+        ON organization_meeting_recordings(meeting_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_organization_meeting_recordings_expiry
+        ON organization_meeting_recordings(expires_at)
+        WHERE status = 'completed';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_meeting_recordings_active
+        ON organization_meeting_recordings(meeting_id)
+        WHERE status IN ('starting', 'recording', 'stopping');
       CREATE TABLE IF NOT EXISTS organization_tasks (
         id TEXT PRIMARY KEY,
         proker_id TEXT,
@@ -775,7 +1024,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
         recipient_account_id TEXT NOT NULL,
-        category TEXT NOT NULL CHECK (category IN ('deadline', 'task', 'submission', 'tutoring')),
+        category TEXT NOT NULL CHECK (category IN ('deadline', 'task', 'submission', 'tutoring', 'meeting')),
         title TEXT NOT NULL,
         message TEXT NOT NULL,
         action_view TEXT NOT NULL DEFAULT '',
@@ -918,6 +1167,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
     this.migrateTransactionalTables();
     this.migrateWorkflowTables();
     this.migrateAcademicTables();
+    this.migrateMeetingTables();
     this.migratePermanentAccountIds();
     this.migrateUncustomizedDefaultLogo();
   }
@@ -940,6 +1190,52 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       CREATE INDEX IF NOT EXISTS idx_tutoring_requests_tutor_schedule
         ON tutoring_requests(tutor_account_id, status, session_at);
     `);
+  }
+
+  migrateMeetingTables() {
+    const addColumnIfMissing = (table, column, definition) => {
+      const columns = this.sqlite.prepare(`PRAGMA table_info(${table})`).all();
+      if (!columns.some((entry) => entry.name === column)) this.sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    };
+    addColumnIfMissing('organization_meetings', 'status', "TEXT NOT NULL DEFAULT 'scheduled'");
+    addColumnIfMissing(
+      'organization_meetings',
+      'video_mode',
+      "TEXT NOT NULL DEFAULT 'in_person' CHECK (video_mode IN ('in_person', 'livekit', 'external'))"
+    );
+    addColumnIfMissing('organization_meeting_documents', 'stored_name', 'TEXT');
+    addColumnIfMissing('organization_meeting_documents', 'original_name', "TEXT NOT NULL DEFAULT ''");
+    addColumnIfMissing('organization_meeting_documents', 'size', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing('organization_meeting_documents', 'sha256', "TEXT NOT NULL DEFAULT ''");
+    this.sqlite.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_meeting_document_stored_name
+      ON organization_meeting_documents(stored_name) WHERE stored_name IS NOT NULL`);
+    const notificationSchema = this.sqlite.prepare(`SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'notifications'`).get()?.sql || '';
+    if (!notificationSchema.includes("'meeting'")) {
+      const migrateNotifications = this.sqlite.transaction(() => {
+        this.sqlite.exec(`CREATE TABLE notifications_with_meetings (
+          id TEXT PRIMARY KEY,
+          recipient_account_id TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN ('deadline', 'task', 'submission', 'tutoring', 'meeting')),
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          action_view TEXT NOT NULL DEFAULT '',
+          dedupe_key TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          read_at TEXT,
+          UNIQUE (recipient_account_id, dedupe_key)
+        );
+        INSERT INTO notifications_with_meetings
+          (id, recipient_account_id, category, title, message, action_view, dedupe_key, created_at, read_at)
+          SELECT id, recipient_account_id, category, title, message, action_view, dedupe_key, created_at, read_at
+          FROM notifications;
+        DROP TABLE notifications;
+        ALTER TABLE notifications_with_meetings RENAME TO notifications;
+        CREATE INDEX idx_notifications_recipient_created
+          ON notifications(recipient_account_id, created_at DESC);`);
+      });
+      migrateNotifications();
+    }
   }
 
   migratePermanentAccountIds() {
@@ -1275,6 +1571,163 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
     return this.siteRepository.getSiteState();
   }
 
+  getSecurityNotice() {
+    return this.siteRepository.getSecurityNotice();
+  }
+
+  getGovernanceDocumentState(documents, metadata) {
+    return this.governanceDocumentsRepository.getGovernanceDocumentState(documents, metadata);
+  }
+
+  listGovernanceDocumentRevisions(limit) {
+    return this.governanceDocumentsRepository.listGovernanceDocumentRevisions(limit);
+  }
+
+  getGovernanceDocumentRevision(id) {
+    return this.governanceDocumentsRepository.getGovernanceDocumentRevision(id);
+  }
+
+  createGovernanceDocumentDraft(title, actorNim, actorRole, changeNote, documents, metadata) {
+    return this.governanceDocumentsRepository.createGovernanceDocumentDraft(title, actorNim, actorRole, changeNote, documents, metadata);
+  }
+
+  saveGovernanceDocumentDraft(draftId, documents, expectedRevisionId, actorNim, actorRole, changeNote, seedDocuments, seedMetadata) {
+    return this.governanceDocumentsRepository.saveGovernanceDocumentDraft(
+      draftId, documents, expectedRevisionId, actorNim, actorRole, changeNote, seedDocuments, seedMetadata
+    );
+  }
+
+  ratifyGovernanceDocumentDraft(draftId, expectedRevisionId, actorNim, actorRole, ratificationNote, metadata, seedDocuments) {
+    return this.governanceDocumentsRepository.ratifyGovernanceDocumentDraft(
+      draftId, expectedRevisionId, actorNim, actorRole, ratificationNote, metadata, seedDocuments
+    );
+  }
+
+  withdrawGovernanceDocumentDraft(draftId, expectedRevisionId, actorNim, actorRole, seedDocuments, seedMetadata) {
+    return this.governanceDocumentsRepository.withdrawGovernanceDocumentDraft(
+      draftId, expectedRevisionId, actorNim, actorRole, seedDocuments, seedMetadata
+    );
+  }
+
+  getActiveOrganizationPositionAccess(today = new Date().toISOString().slice(0, 10)) {
+    const state = this.getSiteState();
+    const mappings = this.sqlite.prepare(`SELECT term_id, position_id, capability
+      FROM organization_position_capabilities`).all();
+    return getActiveTermPositionAccess(state?.published?.content?.data?.organizationStructure, mappings, today);
+  }
+
+  getPositionCapabilitiesForAccount(accountId, today = new Date().toISOString().slice(0, 10)) {
+    if (!accountId) return [];
+    return getPositionCapabilitiesForAccount(this.getActiveOrganizationPositionAccess(today), accountId);
+  }
+
+  setOrganizationPositionCapabilities(termId, positionId, capabilities, actorNim) {
+    const access = this.getActiveOrganizationPositionAccess();
+    if (!access.term || access.term.id !== termId) return { error: 'Periode yang dipilih bukan periode organisasi aktif dan berlaku.' };
+    if (!access.positions.some((position) => position.id === positionId)) return { error: 'Posisi tidak ditemukan pada periode aktif.' };
+    if (!Array.isArray(capabilities) || capabilities.length > POSITION_CAPABILITY_IDS.size
+      || capabilities.some((capability) => !POSITION_CAPABILITY_IDS.has(capability))) {
+      return { error: 'Daftar capability posisi tidak valid.' };
+    }
+
+    const grants = [...new Set(capabilities)];
+    const updatedAt = new Date().toISOString();
+    const replace = this.sqlite.transaction(() => {
+      this.sqlite.prepare('DELETE FROM organization_position_capabilities WHERE term_id = ? AND position_id = ?')
+        .run(termId, positionId);
+      const insert = this.sqlite.prepare(`INSERT INTO organization_position_capabilities
+        (term_id, position_id, capability, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)`);
+      grants.forEach((capability) => insert.run(termId, positionId, capability, actorNim, updatedAt));
+    });
+    replace.immediate();
+    return { access: this.getActiveOrganizationPositionAccess(), updatedAt };
+  }
+
+  getStudentDemographicSettings() {
+    const row = this.sqlite.prepare('SELECT settings_json FROM student_demographic_settings WHERE id = 1').get();
+    return row ? JSON.parse(row.settings_json) : structuredClone(DEFAULT_STUDENT_DEMOGRAPHIC_SETTINGS);
+  }
+
+  setStudentDemographicSettings(settings, actorNim) {
+    const current = this.getStudentDemographicSettings();
+    const nextFieldIds = new Set(settings.customColumns.map(({ id }) => id));
+    const nextFieldsById = new Map(settings.customColumns.map((field) => [field.id, field]));
+    const removedFieldIds = current.customColumns
+      .map(({ id }) => id)
+      .filter((id) => !nextFieldIds.has(id));
+    const currentValues = this.sqlite.prepare(`SELECT field_id, value_json
+      FROM student_demographic_custom_values`).all();
+    for (const row of currentValues) {
+      const nextField = nextFieldsById.get(row.field_id);
+      if (!nextField) continue;
+      const validation = validateStudentDemographicValues({
+        [row.field_id]: JSON.parse(row.value_json)
+      }, [nextField]);
+      if (validation.error) {
+        return { error: `Kolom "${nextField.label}" tidak kompatibel dengan nilai yang tersimpan. Hapus kolom lama dan buat kolom baru untuk mengganti tipe atau opsi.` };
+      }
+    }
+
+    const updatedAt = new Date().toISOString();
+    const save = this.sqlite.transaction(() => {
+      this.sqlite.prepare(`INSERT INTO student_demographic_settings (id, settings_json, updated_by, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          settings_json = excluded.settings_json,
+          updated_by = excluded.updated_by,
+          updated_at = excluded.updated_at`)
+        .run(JSON.stringify(settings), actorNim, updatedAt);
+      if (removedFieldIds.length) {
+        const placeholders = removedFieldIds.map(() => '?').join(', ');
+        this.sqlite.prepare(`DELETE FROM student_demographic_custom_values WHERE field_id IN (${placeholders})`)
+          .run(...removedFieldIds);
+      }
+    });
+    save.immediate();
+    return { settings, updatedAt };
+  }
+
+  getStudentDemographicCustomValues(accountId = null) {
+    const rows = accountId
+      ? this.sqlite.prepare(`SELECT account_id, field_id, value_json
+          FROM student_demographic_custom_values WHERE account_id = ?`).all(accountId)
+      : this.sqlite.prepare(`SELECT account_id, field_id, value_json
+          FROM student_demographic_custom_values`).all();
+    return rows.reduce((valuesByAccount, row) => {
+      valuesByAccount[row.account_id] ||= {};
+      valuesByAccount[row.account_id][row.field_id] = JSON.parse(row.value_json);
+      return valuesByAccount;
+    }, {});
+  }
+
+  setStudentDemographicCustomValues(accountId, values, actor) {
+    const updatedAt = new Date().toISOString();
+    const save = this.sqlite.transaction(() => {
+      const upsert = this.sqlite.prepare(`INSERT INTO student_demographic_custom_values
+        (account_id, field_id, value_json, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, field_id) DO UPDATE SET
+          value_json = excluded.value_json,
+          updated_by = excluded.updated_by,
+          updated_at = excluded.updated_at`);
+      const remove = this.sqlite.prepare('DELETE FROM student_demographic_custom_values WHERE account_id = ? AND field_id = ?');
+      Object.entries(values).forEach(([fieldId, value]) => {
+        if (value === null) remove.run(accountId, fieldId);
+        else upsert.run(accountId, fieldId, JSON.stringify(value), actor.nim, updatedAt);
+      });
+      this.insertAudit({
+        actorNim: actor.nim,
+        actorRole: actor.role,
+        action: 'student_demographics.custom_values_update',
+        targetType: 'user',
+        targetId: accountId,
+        details: { fields: Object.keys(values) },
+        createdAt: updatedAt
+      });
+    });
+    save.immediate();
+    return this.getStudentDemographicCustomValues(accountId)[accountId] || {};
+  }
+
   isAccountLinkedToSite(accountId) {
     const referencesAccount = (config) => (config?.content?.data?.generations || []).some((generation) => {
       return Object.values(generation.leadership || {}).some((leader) => leader.accountId === accountId)
@@ -1289,6 +1742,10 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
 
   saveSiteDraft(config, actorNim, restoredFrom = null, expectedRevisionId = null) {
     return this.siteRepository.saveSiteDraft(config, actorNim, restoredFrom, expectedRevisionId);
+  }
+
+  setSecurityNotice(status, message, actorNim) {
+    return this.siteRepository.setSecurityNotice(status, message, actorNim);
   }
 
   publishSite(actorNim) {
@@ -1321,6 +1778,10 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
 
   assetExists(id, kind) {
     return this.siteRepository.assetExists(id, kind);
+  }
+
+  accountExists(accountId) {
+    return this.siteRepository.accountExists(accountId);
   }
 
   listAssets() {
@@ -1523,6 +1984,20 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
     return this.academicRepository.createKnowledgeDiscussion(...arguments);
   }
 
+  listSocialPosts(...args) { return this.socialRepository.listSocialPosts(...args); }
+  getSocialPost(...args) { return this.socialRepository.getSocialPost(...args); }
+  getSocialPostForAction(...args) { return this.socialRepository.getSocialPostForAction(...args); }
+  createSocialPost(...args) { return this.socialRepository.createSocialPost(...args); }
+  updateSocialPost(...args) { return this.socialRepository.updateSocialPost(...args); }
+  deleteSocialPost(...args) { return this.socialRepository.deleteSocialPost(...args); }
+  listSocialComments(...args) { return this.socialRepository.listSocialComments(...args); }
+  createSocialComment(...args) { return this.socialRepository.createSocialComment(...args); }
+  deleteSocialComment(...args) { return this.socialRepository.deleteSocialComment(...args); }
+  toggleSocialReaction(...args) { return this.socialRepository.toggleSocialReaction(...args); }
+  createSocialReport(...args) { return this.socialRepository.createSocialReport(...args); }
+  listOpenSocialReports(...args) { return this.socialRepository.listOpenSocialReports(...args); }
+  resolveSocialReport(...args) { return this.socialRepository.resolveSocialReport(...args); }
+
   getKnowledgeDiscussions(resourceId, accountId = null) {
     return this.academicRepository.getKnowledgeDiscussions(...arguments);
   }
@@ -1597,6 +2072,307 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
 
   getMyTutoringRequests(accountId) {
     return this.academicRepository.getMyTutoringRequests(...arguments);
+  }
+
+  createSupportTicket(ticket) {
+    const timestamp = new Date().toISOString();
+    const create = this.sqlite.transaction(() => {
+      this.sqlite.prepare(`INSERT INTO support_tickets (id, account_id, name, subject, category, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(ticket.id, ticket.accountId, ticket.name, ticket.subject, ticket.category, timestamp, timestamp);
+      this.sqlite.prepare(`INSERT INTO support_ticket_messages (id, ticket_id, account_id, author_name, message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(randomUUID(), ticket.id, ticket.accountId, ticket.name, ticket.message, timestamp);
+    });
+    create();
+    return this.getSupportTicket(ticket.id, ticket.accountId);
+  }
+
+  listSupportTickets(accountId = null) {
+    const tickets = accountId
+      ? this.sqlite.prepare('SELECT * FROM support_tickets WHERE account_id = ? ORDER BY updated_at DESC').all(accountId)
+      : this.sqlite.prepare('SELECT * FROM support_tickets ORDER BY updated_at DESC').all();
+    return tickets.map(({ account_id, ...ticket }) => ({
+      ...ticket,
+      message_count: this.sqlite.prepare('SELECT COUNT(*) AS count FROM support_ticket_messages WHERE ticket_id = ?').get(ticket.id).count
+    }));
+  }
+
+  getSupportTicket(id, accountId = null) {
+    const ticket = accountId
+      ? this.sqlite.prepare('SELECT * FROM support_tickets WHERE id = ? AND account_id = ?').get(id, accountId)
+      : this.sqlite.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    if (!ticket) return null;
+    const messages = this.sqlite.prepare(`SELECT id, author_name, message, created_at
+      FROM support_ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC, id ASC`).all(id);
+    const { account_id, ...safeTicket } = ticket;
+    return { ticket: safeTicket, messages };
+  }
+
+  addSupportTicketMessage({ id, accountId, authorName, message, isStaff = false }) {
+    const timestamp = new Date().toISOString();
+    const add = this.sqlite.transaction(() => {
+      this.sqlite.prepare(`INSERT INTO support_ticket_messages (id, ticket_id, account_id, author_name, message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(randomUUID(), id, accountId, authorName, message, timestamp);
+      this.sqlite.prepare(`UPDATE support_tickets SET
+        status = CASE WHEN ? = 1 THEN status WHEN status = 'resolved' THEN 'open' ELSE status END,
+        updated_at = ? WHERE id = ?`).run(isStaff ? 1 : 0, timestamp, id);
+    });
+    add();
+    return this.getSupportTicket(id);
+  }
+
+  updateSupportTicketStatus(id, status) {
+    const result = this.sqlite.prepare('UPDATE support_tickets SET status = ?, updated_at = ? WHERE id = ?')
+      .run(status, new Date().toISOString(), id);
+    return result.changes ? this.getSupportTicket(id) : null;
+  }
+
+  listMyLearningEnrollments(accountId) {
+    return this.sqlite.prepare(`SELECT learning_path_id, completed_milestones_json, created_at, updated_at
+      FROM learning_enrollments WHERE account_id = ? ORDER BY updated_at DESC`).all(accountId)
+      .map(({ learning_path_id, completed_milestones_json, ...enrollment }) => ({
+        learning_path_id,
+        completed_milestones: JSON.parse(completed_milestones_json),
+        ...enrollment
+      }));
+  }
+
+  enrollInLearningPath(accountId, learningPathId) {
+    const timestamp = new Date().toISOString();
+    this.sqlite.prepare(`INSERT INTO learning_enrollments
+      (account_id, learning_path_id, completed_milestones_json, created_at, updated_at)
+      VALUES (?, ?, '[]', ?, ?) ON CONFLICT(account_id, learning_path_id) DO NOTHING`)
+      .run(accountId, learningPathId, timestamp, timestamp);
+    return this.listMyLearningEnrollments(accountId).find(({ learning_path_id }) => learning_path_id === learningPathId);
+  }
+
+  completeLearningMilestone(accountId, learningPathId, completedMilestones) {
+    const timestamp = new Date().toISOString();
+    const result = this.sqlite.prepare(`UPDATE learning_enrollments SET completed_milestones_json = ?, updated_at = ?
+      WHERE account_id = ? AND learning_path_id = ?`)
+      .run(JSON.stringify(completedMilestones), timestamp, accountId, learningPathId);
+    return result.changes ? this.listMyLearningEnrollments(accountId).find(({ learning_path_id }) => learning_path_id === learningPathId) : null;
+  }
+
+  createMeetingOccurrences({ seriesId, organizerAccountId, attendeeAccountIds, recurrenceRule, occurrences }) {
+    const timestamp = new Date().toISOString();
+    const insertMeeting = this.sqlite.prepare(`INSERT INTO organization_meetings
+      (id, series_id, title, agenda, location, video_mode, starts_at, ends_at, organizer_account_id, recurrence_rule_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertAttendee = this.sqlite.prepare(`INSERT INTO organization_meeting_attendees (meeting_id, account_id)
+      VALUES (?, ?)`);
+    const create = this.sqlite.transaction(() => {
+      for (const occurrence of occurrences) {
+        insertMeeting.run(
+          occurrence.id,
+          seriesId,
+          occurrence.title,
+          occurrence.agenda,
+          occurrence.location,
+          occurrence.videoMode || 'in_person',
+          occurrence.startsAt,
+          occurrence.endsAt,
+          organizerAccountId,
+          recurrenceRule ? JSON.stringify(recurrenceRule) : null,
+          timestamp,
+          timestamp
+        );
+        for (const accountId of attendeeAccountIds) insertAttendee.run(occurrence.id, accountId);
+      }
+    });
+    create();
+    return this.listMyMeetings(organizerAccountId);
+  }
+
+  listMyMeetings(accountId) {
+    return this.sqlite.prepare(`SELECT m.*, a.response AS my_response
+      FROM organization_meetings m
+      JOIN organization_meeting_attendees a ON a.meeting_id = m.id AND a.account_id = ?
+      ORDER BY m.starts_at ASC LIMIT 200`).all(accountId).map((meeting) => this.mapOrganizationMeeting(meeting, accountId));
+  }
+
+  mapOrganizationMeeting(row, viewerAccountId) {
+    if (!row) return null;
+    const { recurrence_rule_json, decisions_json, ...meeting } = row;
+    const attendees = this.sqlite.prepare(`SELECT account_id, response, responded_at, attendance_marked_at
+      FROM organization_meeting_attendees WHERE meeting_id = ? ORDER BY account_id`).all(row.id);
+    const canViewAttendees = row.organizer_account_id === viewerAccountId;
+    const visibleAttendees = canViewAttendees ? attendees : attendees.filter(({ account_id }) => account_id === viewerAccountId);
+    return {
+      ...meeting,
+      recurrence_rule: recurrence_rule_json ? JSON.parse(recurrence_rule_json) : null,
+      decisions: JSON.parse(decisions_json),
+      attendees: visibleAttendees.map((attendee) => {
+        const user = this.findUserById(attendee.account_id);
+        return { ...attendee, nim: user?.nim || '', name: user?.name || '' };
+      }),
+      actions: this.listMeetingActions(row.id).map((action) => {
+        const assignee = action.assignee_account_id ? this.findUserById(action.assignee_account_id) : null;
+        return { ...action, assignee_nim: assignee?.nim || '', assignee_name: assignee?.name || '' };
+      }),
+      documents: this.listMeetingDocuments(row.id),
+      recording: this.getMeetingRecordingSummary(row.id)
+    };
+  }
+
+  getMeetingRecordingSummary(meetingId) {
+    return this.sqlite.prepare(`SELECT id, status, notice_confirmed_at, started_at, stopped_at, expires_at
+      FROM organization_meeting_recordings WHERE meeting_id = ?
+      ORDER BY created_at DESC LIMIT 1`).get(meetingId) || null;
+  }
+
+  getMeetingRecording(meetingId, recordingId) {
+    return this.sqlite.prepare(`SELECT * FROM organization_meeting_recordings
+      WHERE meeting_id = ? AND id = ?`).get(meetingId, recordingId) || null;
+  }
+
+  getLatestActiveMeetingRecording(meetingId) {
+    return this.sqlite.prepare(`SELECT * FROM organization_meeting_recordings
+      WHERE meeting_id = ? AND status IN ('starting', 'recording', 'stopping')
+      ORDER BY created_at DESC LIMIT 1`).get(meetingId) || null;
+  }
+
+  createMeetingRecording({ id, meetingId, noticeConfirmedBy, noticeConfirmedAt, expiresAt }) {
+    const timestamp = new Date().toISOString();
+    const create = this.sqlite.transaction(() => {
+      if (this.getLatestActiveMeetingRecording(meetingId)) return null;
+      this.sqlite.prepare(`INSERT INTO organization_meeting_recordings
+        (id, meeting_id, notice_confirmed_by, notice_confirmed_at, started_by_account_id, started_at, expires_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, meetingId, noticeConfirmedBy, noticeConfirmedAt, noticeConfirmedBy, timestamp, expiresAt, timestamp, timestamp);
+      return this.getMeetingRecording(meetingId, id);
+    });
+    return create();
+  }
+
+  setMeetingRecordingStarted(id, meetingId, egressId, storageKey) {
+    const result = this.sqlite.prepare(`UPDATE organization_meeting_recordings
+      SET egress_id = ?, storage_key = ?, status = 'recording', updated_at = ?
+      WHERE id = ? AND meeting_id = ? AND status = 'starting'`)
+      .run(egressId, storageKey, new Date().toISOString(), id, meetingId);
+    return result.changes ? this.getMeetingRecording(meetingId, id) : null;
+  }
+
+  updateMeetingRecordingStatus(id, meetingId, status, { stoppedAt = null, failureCode = '' } = {}) {
+    if (!['starting', 'recording', 'stopping', 'completed', 'failed', 'expired'].includes(status)) {
+      throw new Error('Invalid meeting recording status.');
+    }
+    const result = this.sqlite.prepare(`UPDATE organization_meeting_recordings
+      SET status = ?, stopped_at = COALESCE(?, stopped_at), failure_code = ?, updated_at = ?
+      WHERE id = ? AND meeting_id = ?`)
+      .run(status, stoppedAt, failureCode, new Date().toISOString(), id, meetingId);
+    return result.changes ? this.getMeetingRecording(meetingId, id) : null;
+  }
+
+  listExpiredMeetingRecordings(now = new Date().toISOString(), limit = 100) {
+    return this.sqlite.prepare(`SELECT id, meeting_id, storage_key FROM organization_meeting_recordings
+      WHERE status IN ('completed', 'failed') AND expires_at <= ? AND storage_key IS NOT NULL
+      ORDER BY expires_at ASC LIMIT ?`).all(now, limit);
+  }
+
+  listActiveMeetingRecordings(limit = 100) {
+    return this.sqlite.prepare(`SELECT id, meeting_id, egress_id, status FROM organization_meeting_recordings
+      WHERE status IN ('starting', 'recording', 'stopping') AND egress_id IS NOT NULL
+      ORDER BY created_at ASC LIMIT ?`).all(limit);
+  }
+
+  getMeetingForAccount(meetingId, accountId) {
+    const row = this.sqlite.prepare(`SELECT m.*, a.response AS my_response
+      FROM organization_meetings m
+      JOIN organization_meeting_attendees a ON a.meeting_id = m.id
+      WHERE m.id = ? AND a.account_id = ?`).get(meetingId, accountId);
+    return this.mapOrganizationMeeting(row, accountId);
+  }
+
+  updateMeetingRsvp(meetingId, accountId, response) {
+    const result = this.sqlite.prepare(`UPDATE organization_meeting_attendees
+      SET response = ?, responded_at = ? WHERE meeting_id = ? AND account_id = ?
+      AND response IN ('invited', 'accepted', 'declined')
+      AND EXISTS (SELECT 1 FROM organization_meetings WHERE id = ? AND status = 'scheduled')`)
+      .run(response, new Date().toISOString(), meetingId, accountId, meetingId);
+    return result.changes ? this.getMeetingForAccount(meetingId, accountId) : null;
+  }
+
+  rescheduleMeeting(meetingId, startsAt, endsAt) {
+    const result = this.sqlite.prepare(`UPDATE organization_meetings SET starts_at = ?, ends_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'scheduled'`).run(startsAt, endsAt, new Date().toISOString(), meetingId);
+    return result.changes;
+  }
+
+  cancelMeetingOccurrence(meetingId) {
+    const result = this.sqlite.prepare(`UPDATE organization_meetings SET status = 'cancelled', updated_at = ?
+      WHERE id = ? AND status = 'scheduled'`).run(new Date().toISOString(), meetingId);
+    return result.changes;
+  }
+
+  cancelMeetingSeries(seriesId, organizerAccountId) {
+    const attendeeRows = this.sqlite.prepare(`SELECT DISTINCT a.account_id FROM organization_meeting_attendees a
+      JOIN organization_meetings m ON m.id = a.meeting_id
+      WHERE m.series_id = ? AND m.organizer_account_id = ? AND m.status = 'scheduled'`).all(seriesId, organizerAccountId);
+    const result = this.sqlite.prepare(`UPDATE organization_meetings SET status = 'cancelled', updated_at = ?
+      WHERE series_id = ? AND organizer_account_id = ? AND status = 'scheduled'`)
+      .run(new Date().toISOString(), seriesId, organizerAccountId);
+    return { changes: result.changes, attendeeAccountIds: attendeeRows.map(({ account_id }) => account_id) };
+  }
+
+  markMeetingAttendance(meetingId, accountId, response, markerAccountId) {
+    const timestamp = new Date().toISOString();
+    const result = this.sqlite.prepare(`UPDATE organization_meeting_attendees
+      SET response = ?, attendance_marked_by = ?, attendance_marked_at = ?
+      WHERE meeting_id = ? AND account_id = ?
+      AND EXISTS (SELECT 1 FROM organization_meetings WHERE id = ? AND status = 'scheduled')`)
+      .run(response, markerAccountId, timestamp, meetingId, accountId, meetingId);
+    return result.changes ? this.getMeetingForAccount(meetingId, markerAccountId) : null;
+  }
+
+  saveMeetingMinutes(meetingId, { minutes, decisions }) {
+    const result = this.sqlite.prepare(`UPDATE organization_meetings
+      SET minutes = ?, decisions_json = ?, updated_at = ? WHERE id = ?`)
+      .run(minutes, JSON.stringify(decisions), new Date().toISOString(), meetingId);
+    return result.changes;
+  }
+
+  listMeetingActions(meetingId) {
+    return this.sqlite.prepare(`SELECT id, meeting_id, title, assignee_account_id, due_date, status, created_by_account_id, created_at, updated_at
+      FROM organization_meeting_actions WHERE meeting_id = ? ORDER BY created_at ASC`).all(meetingId);
+  }
+
+  createMeetingAction({ id, meetingId, title, assigneeAccountId, dueDate, createdByAccountId }) {
+    const timestamp = new Date().toISOString();
+    this.sqlite.prepare(`INSERT INTO organization_meeting_actions
+      (id, meeting_id, title, assignee_account_id, due_date, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, meetingId, title, assigneeAccountId, dueDate, createdByAccountId, timestamp, timestamp);
+    return this.listMeetingActions(meetingId).find((action) => action.id === id);
+  }
+
+  updateMeetingActionStatus(id, meetingId, status) {
+    const result = this.sqlite.prepare(`UPDATE organization_meeting_actions SET status = ?, updated_at = ?
+      WHERE id = ? AND meeting_id = ?`).run(status, new Date().toISOString(), id, meetingId);
+    return result.changes ? this.listMeetingActions(meetingId).find((action) => action.id === id) : null;
+  }
+
+  listMeetingDocuments(meetingId) {
+    return this.sqlite.prepare(`SELECT id, meeting_id, title, url, original_name, size, sha256, created_by_account_id, created_at
+      FROM organization_meeting_documents WHERE meeting_id = ? ORDER BY created_at ASC`).all(meetingId)
+      .map((document) => ({
+        ...document,
+        url: document.url || `/api/meetings/${encodeURIComponent(meetingId)}/documents/${encodeURIComponent(document.id)}/download`
+      }));
+  }
+
+  getMeetingDocument(meetingId, documentId) {
+    return this.sqlite.prepare(`SELECT id, meeting_id, title, url, stored_name, original_name, size, sha256, created_by_account_id, created_at
+      FROM organization_meeting_documents WHERE meeting_id = ? AND id = ?`).get(meetingId, documentId) || null;
+  }
+
+  addMeetingDocument({ id, meetingId, title, url = '', storedName = null, originalName = '', size = 0, sha256 = '', createdByAccountId }) {
+    this.sqlite.prepare(`INSERT INTO organization_meeting_documents
+      (id, meeting_id, title, url, stored_name, original_name, size, sha256, created_by_account_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, meetingId, title, url, storedName, originalName, size, sha256, createdByAccountId, new Date().toISOString());
+    return this.listMeetingDocuments(meetingId).find((document) => document.id === id);
   }
 
   getTutoringRequest(id) {
@@ -1678,7 +2454,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
   getAuditLogs(limit = 50) {
     return this.sqlite.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?').all(limit).map(row => {
       let parsed = {};
-      try { parsed = JSON.parse(row.details_json || '{}'); } catch (e) {}
+      try { parsed = JSON.parse(row.details_json || '{}'); } catch (e) { }
       return {
         id: row.id,
         actor_nim: row.actor_nim,
@@ -1696,7 +2472,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
     return this.userSqlRepository.resetUserPasswordAdmin(nim, newPassword, actor);
   }
 
-    insertAudit({ actorNim, actorRole, action, targetType, targetId, details, createdAt = new Date().toISOString() }) {
+  insertAudit({ actorNim, actorRole, action, targetType, targetId, details, createdAt = new Date().toISOString() }) {
     this.sqlite.prepare(`INSERT INTO audit_log (id, actor_nim, actor_role, action, target_type, target_id, details_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), actorNim, actorRole, action, targetType, targetId, JSON.stringify(details), createdAt);
   }
@@ -1708,6 +2484,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       task: true,
       submission: true,
       tutoring: true,
+      meeting: true,
       deadline_days: 3,
       tutoring_reminder_hours: 24
     };
@@ -1817,12 +2594,20 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
     return this.userSqlRepository.updateUserAdmin(nim, updates, actor);
   }
 
+  bulkUpdateAccountAccess(accountIds, updates, actor) {
+    return this.userSqlRepository.bulkUpdateAccountAccess(accountIds, updates, actor);
+  }
+
   updateUserRole(nim, role, actor = null) {
     return this.userSqlRepository.updateUserRole(nim, role, actor);
   }
 
   setAcademicCuratorPermission(nim, enabled, actor) {
     return this.userSqlRepository.setAcademicCuratorPermission(nim, enabled, actor);
+  }
+
+  setMeetingOrganizerPermission(nim, enabled, actor) {
+    return this.userSqlRepository.setMeetingOrganizerPermission(nim, enabled, actor);
   }
 
   deleteUser(nim) {
@@ -2116,6 +2901,10 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
         FROM attendance_sessions ORDER BY created_at ASC`).all(),
       site_state: this.getSiteState(),
       site_revisions: this.sqlite.prepare('SELECT id, version, status, payload, created_by, created_at, published_at, restored_from FROM site_revisions ORDER BY version').all().map((row) => ({ ...row, payload: JSON.parse(row.payload) })),
+      student_demographic_settings: this.getStudentDemographicSettings(),
+      student_demographic_custom_values: this.sqlite.prepare(`SELECT account_id, field_id, value_json, updated_by, updated_at
+        FROM student_demographic_custom_values ORDER BY account_id, field_id`).all()
+        .map(({ value_json, ...row }) => ({ ...row, value: JSON.parse(value_json) })),
       assets: this.listAssets(),
       soundtracks: this.sqlite.prepare('SELECT * FROM soundtracks ORDER BY sort_order, created_at').all(),
       portal_records: this.sqlite.prepare(`SELECT id, kind, payload_json, active, created_by, submitter_account_id,
@@ -2132,6 +2921,9 @@ CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
       academic_learning_paths: this.sqlite.prepare('SELECT * FROM academic_learning_paths ORDER BY created_at ASC').all()
         .map(({ payload_json, ...record }) => ({ ...record, payload: JSON.parse(payload_json) })),
       academic_learning_path_history: this.sqlite.prepare('SELECT * FROM academic_learning_path_history ORDER BY created_at ASC, id').all(),
+      learning_enrollments: this.sqlite.prepare('SELECT * FROM learning_enrollments ORDER BY account_id, learning_path_id').all(),
+      support_tickets: this.sqlite.prepare('SELECT * FROM support_tickets ORDER BY created_at ASC').all(),
+      support_ticket_messages: this.sqlite.prepare('SELECT * FROM support_ticket_messages ORDER BY created_at ASC, id').all(),
       tech_articles: this.sqlite.prepare('SELECT * FROM tech_articles ORDER BY created_at ASC').all()
         .map(({ payload_json, ...article }) => ({ ...article, payload: JSON.parse(payload_json) })),
       tech_article_history: this.sqlite.prepare('SELECT * FROM tech_article_history ORDER BY created_at ASC, id').all(),

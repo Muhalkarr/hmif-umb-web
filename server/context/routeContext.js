@@ -21,19 +21,24 @@ import { sendEventTicketEmail } from '../eventDelivery.js';
 import { createAuditService } from '../services/auditService.js';
 import { createNotificationService } from '../services/notificationService.js';
 import { createWebPushService } from '../services/webPushService.js';
+import { createMeetingConferencingService } from '../services/meetingConferencingService.js';
 import { createUserRepository } from '../repositories/userRepository.js';
 import { createSiteRepository } from '../repositories/siteRepository.js';
+import { createGovernanceDocumentsRepository } from '../repositories/governanceDocumentsRepository.js';
 import { createAcademicRepository } from '../repositories/academicRepository.js';
+import { createSocialRepository } from '../repositories/socialRepository.js';
 import { createAuthMiddleware } from '../middleware/auth.js';
 import { normalizeCareerSpecializations } from '../careerFeatures.js';
 import { normalizeYoutubeEmbedUrl } from '../portfolioFeatures.js';
 
 // ─── Paths & Directories ─────────────────────────────────────────────────────
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url.replace('/context/', '/')));
+const CONSTITUTION_DOCUMENT_PATH = path.resolve(SERVER_DIR, '../Draft Amandemen AD & ART + GBHO.pdf');
 const ASSET_DIR = path.resolve(process.env.ASSET_STORAGE_DIR || path.join(SERVER_DIR, '../data/site-assets'));
 const ASSET_TMP_DIR = path.join(ASSET_DIR, '.incoming');
 const KNOWLEDGE_DIR = path.join(ASSET_DIR, 'knowledge');
 const KNOWLEDGE_TMP_DIR = path.join(ASSET_TMP_DIR, 'knowledge');
+const MEETING_DOCUMENT_DIR = path.join(ASSET_DIR, 'meeting-documents');
 const SOUNDTRACK_DIR = path.join(ASSET_DIR, 'soundtracks');
 const SOUNDTRACK_TMP_DIR = path.join(ASSET_TMP_DIR, 'soundtracks');
 const RECEIPT_DIR = path.join(ASSET_DIR, 'receipts');
@@ -42,6 +47,7 @@ const RECEIPT_TMP_DIR = path.join(ASSET_TMP_DIR, 'receipts');
 fs.mkdirSync(ASSET_TMP_DIR, { recursive: true });
 fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
 fs.mkdirSync(KNOWLEDGE_TMP_DIR, { recursive: true });
+fs.mkdirSync(MEETING_DOCUMENT_DIR, { recursive: true });
 fs.mkdirSync(SOUNDTRACK_DIR, { recursive: true });
 fs.mkdirSync(SOUNDTRACK_TMP_DIR, { recursive: true });
 fs.mkdirSync(RECEIPT_DIR, { recursive: true });
@@ -112,6 +118,9 @@ export const aspirationLimiter = makeLimiter(60 * 60 * 1000, 8, 'Batas pengirima
 export const aspirationTrackingLimiter = makeLimiter(60 * 60 * 1000, 20, 'Batas pemeriksaan tiket tercapai. Coba lagi nanti.');
 export const eventRegistrationLimiter = makeLimiter(60 * 60 * 1000, 8, 'Batas pendaftaran event tercapai. Coba lagi nanti.');
 export const knowledgeDiscussionLimiter = makeLimiter(60 * 60 * 1000, 8, 'Batas pengiriman diskusi tercapai. Coba lagi nanti.');
+export const socialPostLimiter = makeLimiter(60 * 60 * 1000, 20, 'Batas post tercapai. Coba lagi nanti.');
+export const socialCommentLimiter = makeLimiter(60 * 60 * 1000, 40, 'Batas interaksi sosial tercapai. Coba lagi nanti.');
+export const socialReportLimiter = makeLimiter(60 * 60 * 1000, 10, 'Batas laporan tercapai. Coba lagi nanti.');
 export const githubStatsLimiter = makeLimiter(60 * 60 * 1000, 60, 'Batas permintaan statistik GitHub tercapai. Coba lagi nanti.');
 export const tutoringRequestLimiter = makeLimiter(60 * 60 * 1000, 3, 'Batas permintaan Klinik Koding tercapai. Coba lagi nanti.');
 
@@ -397,9 +406,13 @@ export const validateOrganizationTask = (data, existing = null) => {
 export const auditService = createAuditService(db);
 export const notificationService = createNotificationService(db);
 export const webPushService = createWebPushService(db);
+export const meetingConferencingService = createMeetingConferencingService();
 export const userRepository = createUserRepository(db);
 export const siteRepository = createSiteRepository(db);
+export const governanceDocumentsRepository = createGovernanceDocumentsRepository(db);
 export const academicRepository = createAcademicRepository(db);
+export const socialRepository = createSocialRepository(db);
+export const votingRepository = db.votingRepository;
 export const auditAdminMutation = auditService.record.bind(auditService);
 export const createUserNotification = notificationService.create.bind(notificationService);
 export const { daysUntilDate } = notificationService;
@@ -433,8 +446,10 @@ export const buildRouteContext = (authMiddleware) => ({
   ...authMiddleware,
   fs,
   path,
+  CONSTITUTION_DOCUMENT_PATH,
   SOUNDTRACK_DIR,
   KNOWLEDGE_DIR,
+  MEETING_DOCUMENT_DIR,
   ASSET_DIR,
   RECEIPT_DIR,
   RECEIPT_TMP_DIR,
@@ -451,12 +466,18 @@ export const buildRouteContext = (authMiddleware) => ({
   isPdfDocument,
   randomUUID,
   createHash,
+  auditService,
   auditAdminMutation,
+  votingRepository,
+  governanceDocumentsRepository,
   isAssetReferenced,
   hasPermission,
   validateAcademicResource,
   validateLearningPath,
   knowledgeDiscussionLimiter,
+  socialPostLimiter,
+  socialCommentLimiter,
+  socialReportLimiter,
   tutoringRequestLimiter,
   validatePreferredSlots,
   rankTutorCandidates,
@@ -475,6 +496,7 @@ export const buildRouteContext = (authMiddleware) => ({
   COOKIE_NAME,
   isProduction,
   createUserNotification,
+  meetingConferencingService,
   daysUntilDate,
   webPushService,
   validateProker,

@@ -17,13 +17,18 @@ import {
   db,
   userRepository,
   siteRepository,
-  academicRepository
+  governanceDocumentsRepository,
+  academicRepository,
+  socialRepository
 } from './context/routeContext.js';
 
 // ─── Route Registrars ─────────────────────────────────────────────────────────
 import { registerHealthRoutes } from './routes/health.js';
 import { registerSiteRoutes } from './routes/site.js';
+import { registerSecurityNoticeRoutes } from './routes/securityNotice.js';
+import { registerGovernanceDocumentsRoutes } from './routes/governanceDocuments.js';
 import { registerAcademicRoutes } from './routes/academic.js';
+import { registerSocialRoutes } from './routes/social.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerSsoRoutes } from './routes/sso.js';
 import { registerWebPushRoutes } from './routes/webPush.js';
@@ -31,9 +36,16 @@ import { registerOperationsRoutes } from './routes/operations.js';
 import { registerFinanceRoutes } from './routes/finance.js';
 import { registerAttendanceRoutes } from './routes/attendance.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerSupportRoutes } from './routes/support.js';
+import { registerLearningRoutes } from './routes/learning.js';
+import { registerMeetingRoutes } from './routes/meetings.js';
+import { registerVotingRoutes } from './routes/voting.js';
+import { registerPositionAccessRoutes } from './routes/positionAccess.js';
+import { registerStudentDemographicRoutes } from './routes/studentDemographics.js';
 
 // ─── WebSocket Stats Service ──────────────────────────────────────────────────
 import { createWsStatsService } from './services/wsStatsService.js';
+import { createMeetingRecordingLifecycle } from './services/meetingRecordingLifecycle.js';
 import { setWsStatsService } from './context/routeContext.js';
 
 /* ==========================================================================
@@ -79,9 +91,11 @@ app.use(cors({
 // ─── Body Parsers ─────────────────────────────────────────────────────────────
 const standardJsonParser = express.json({ limit: '32kb' });
 const siteConfigJsonParser = express.json({ limit: '64kb' });
+const governanceDocumentJsonParser = express.json({ limit: '1mb' });
 app.use((req, res, next) => {
   const isSiteConfigWrite = ['/api/site/validate', '/api/site/draft'].includes(req.path);
-  (isSiteConfigWrite ? siteConfigJsonParser : standardJsonParser)(req, res, next);
+  const isGovernanceDocumentWrite = req.path.startsWith('/api/governance-documents/');
+  (isGovernanceDocumentWrite ? governanceDocumentJsonParser : isSiteConfigWrite ? siteConfigJsonParser : standardJsonParser)(req, res, next);
 });
 app.use(cookieParser());
 
@@ -112,6 +126,15 @@ const {
 
 // Pasang global authenticateToken (mengisi req.user bila token valid)
 app.use(authenticateToken);
+app.use((req, _res, next) => {
+  if (req.user) {
+    req.user = {
+      ...req.user,
+      position_capabilities: db.getPositionCapabilitiesForAccount(req.user.account_id)
+    };
+  }
+  next();
+});
 
 /* ==========================================================================
    ROUTE CONTEXT — assembles all shared deps for domain routers
@@ -128,9 +151,18 @@ registerHealthRoutes(app, { version: '4.2.0' });
 
 // Site & Asset Management
 registerSiteRoutes(app, { ...ctx, db: siteRepository });
+registerSecurityNoticeRoutes(app, { ...ctx, db: siteRepository });
+registerGovernanceDocumentsRoutes(app, { ...ctx, db: governanceDocumentsRepository, siteDb: siteRepository });
 
 // Academic — Knowledge Base, Tutoring, Learning Paths
 registerAcademicRoutes(app, { ...ctx, db: academicRepository });
+registerSocialRoutes(app, { ...ctx, db: socialRepository });
+registerSupportRoutes(app, ctx);
+registerLearningRoutes(app, ctx);
+registerMeetingRoutes(app, ctx);
+registerVotingRoutes(app, ctx);
+registerPositionAccessRoutes(app, ctx);
+registerStudentDemographicRoutes(app, ctx);
 
 // Auth — Login, Register, Profile, Notifications, Password
 registerAuthRoutes(app, { ...ctx, db: userRepository });
@@ -160,12 +192,18 @@ registerAdminRoutes(app, ctx);
 export const server = app.listen(PORT, () => {
   console.log(`[PRTS API SERVER] Running on port http://localhost:${PORT}`);
   console.log(`[PRTS SECURITY] RBAC Clearance System Online. Ready for telemetries.`);
-  console.log(`[PRTS MODULES] Auth | SSO | Site | Academic | Operations | Finance | Attendance | Admin | WebPush | WsStats`);
+  console.log(`[PRTS MODULES] Auth | SSO | Site | Academic | E-Voting | Operations | Finance | Attendance | Admin | WebPush | WsStats`);
 });
 
 // ─── WebSocket Stats (attach setelah listen agar httpServer siap) ─────────────
 export const wsStatsService = createWsStatsService(server, db);
 setWsStatsService(wsStatsService);
+const meetingRecordingLifecycle = createMeetingRecordingLifecycle({
+  db,
+  conferencingService: ctx.meetingConferencingService
+});
+server.on('listening', () => meetingRecordingLifecycle.start());
 server.on('close', () => {
+  meetingRecordingLifecycle.stop();
   if (wsStatsService?.close) wsStatsService.close();
 });

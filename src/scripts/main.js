@@ -3,21 +3,36 @@
    ========================================================================== */
 
 import { HMIF_DATA } from './data.js';
-import { FULL_CONSTITUTION_DATA } from './constitutionData.js';
 import { prtsApi } from './api.js';
-import { AdminConsole } from './adminConsole.js';
-import { AcademicConsole } from './academicConsole.js';
-import { SiteStudio } from './siteStudio.js';
-import { initVotingEvents, renderPollList, renderPollDetail } from './eVoting.js';
+import { renderPollList } from './eVoting.js';
+import { bindStudentDemographicsExport, collectCustomFieldValues, renderCustomFieldInput, renderStudentDemographics } from './studentDemographics.js';
+import { bindPositionAccessWorkspace, renderPositionAccessWorkspace } from './positionAccess.js';
 import { prtsSound } from './soundEffects.js';
 import { CanvasDustEngine } from './canvasDust.js';
 import { getCohortPosts, resolveCohortOperator } from './dualRole.js';
 import { filterKnowledgeResources, getKnowledgeLecturers } from './knowledge.js';
-import { getWorkspaceConfiguration } from './workspace.js';
-import { resolveBackgroundImage } from '../../shared/siteSchema.js';
+import { findWorkspaceNavigationEntry, getWorkspaceConfiguration, hasWorkspaceCapability } from './workspace.js';
+import { renderMemberDashboard } from './workspaceDashboard.js';
+import { bindLearningWorkspace, renderLearningWorkspace } from './workspaceLearning.js';
+import { bindSupportWorkspace, renderSupportWorkspace } from './workspaceSupport.js';
+import { bindMeetingWorkspace, renderMeetingWorkspace } from './workspaceMeetings.js';
+import { bindGovernanceDocumentsWorkspace, renderGovernanceDocumentsWorkspace } from './workspaceGovernanceDocuments.js';
+import { parseLegacyGovernanceArticle, renderGovernanceContentHtml } from '../../shared/governanceDocumentContent.js';
+import { renderOrganizationStructure } from './organization.js';
+import { CampusMapView } from './campusMap.js';
+import { SiteHierarchiesView } from './siteHierarchies.js';
+import '../styles/campusMap.css';
+import '../styles/siteHierarchy.css';
+import { DEFAULT_LIGHT_THEME_COLORS, resolveBackgroundImage } from '../../shared/siteSchema.js';
 import { renderConnectionStatus } from '../features/system/connectionStatus.js';
 import { initSso, inspectSsoReturn } from '../features/sso.js';
-import QRCode from 'qrcode';
+import { initEmergencyNotice } from './emergencyNotice.js';
+import '../styles/emergencyNotice.css';
+
+const createQrDataUrl = async (value, options) => {
+  const { default: QRCode } = await import('qrcode');
+  return QRCode.toDataURL(value, options);
+};
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -26,6 +41,81 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
   '"': '&quot;',
   "'": '&#39;'
 }[character]));
+
+const navigationContainsView = (nodes, view) => nodes.some((node) => (
+  node.id === view || node.workspaceView === view || navigationContainsView(node.children || [], view)
+));
+
+const renderWorkspaceNavigationNode = (node, activeView, expandedGroups) => {
+  const badge = node.status !== 'available'
+    ? '<span class="workspace-nav-badge planned" aria-label="Modul belum tersedia">SEGERA</span>'
+    : node.badge
+      ? `<span class="workspace-nav-badge ${escapeHtml(node.badgeClass || '')}">${escapeHtml(node.badge)}</span>`
+      : '';
+  const isStudio = node.id === 'studio';
+  const isOperations = node.id === 'operations';
+  if (isStudio || isOperations) {
+    const subnavigation = isStudio
+      ? { id: 'studio', label: 'Site Studio', tabsClass: 'workspace-studio-tabs', tablistClass: 'workspace-studio-tablist' }
+      : { id: 'operations', label: 'Konsol operasional', tabsClass: 'workspace-operations-tabs', tablistClass: 'workspace-operations-tablist' };
+    const searchText = [...(node.path || []), node.label].join(' ').toLocaleLowerCase();
+    return `
+      <details class="workspace-nav-group workspace-subnav-group" data-nav-group data-nav-entry
+        data-nav-label="${escapeHtml(searchText)}" data-workspace-subnav="${subnavigation.id}"
+        data-nav-state-key="group:${escapeHtml(node.id)}"
+        ${node.id === activeView || expandedGroups.has(`group:${node.id}`) ? 'open' : ''}>
+        <summary>
+          <span>${escapeHtml(node.label)}</span>${badge}
+          <span class="workspace-nav-caret" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="workspace-nav-children">
+          <div id="workspace-${subnavigation.id}-tabs" class="${subnavigation.tabsClass}" hidden>
+            <div id="workspace-${subnavigation.id}-tablist" class="${subnavigation.tablistClass}"></div>
+          </div>
+        </div>
+      </details>
+    `;
+  }
+  if (node.children?.length) {
+    const containsActiveView = navigationContainsView(node.children, activeView);
+    return `
+      <details class="workspace-nav-group" data-nav-group data-nav-state-key="group:${escapeHtml(node.id)}"
+        ${containsActiveView || expandedGroups.has(`group:${node.id}`) ? 'open' : ''}>
+        <summary><span>${escapeHtml(node.label)}</span>${badge}<span class="workspace-nav-caret" aria-hidden="true">⌄</span></summary>
+        <div class="workspace-nav-children">${node.children.map((child) => renderWorkspaceNavigationNode(child, activeView, expandedGroups)).join('')}</div>
+      </details>
+    `;
+  }
+  const searchText = [...(node.path || []), node.label].join(' ').toLocaleLowerCase();
+  return `
+    <button type="button" class="workspace-nav-link ${node.id === activeView ? 'active' : ''}"
+      data-nav-entry data-nav-label="${escapeHtml(searchText)}"
+      data-workspace-view="${escapeHtml(node.id)}"
+      ${node.publicAnchor ? `data-workspace-public-anchor="${escapeHtml(node.publicAnchor)}"` : ''}
+      ${node.status !== 'available' ? 'disabled title="Modul ini belum tersedia."' : ''}
+      ${node.id === activeView ? 'aria-current="page"' : ''}>
+      <span>${escapeHtml(node.label)}</span>${badge}<span class="workspace-nav-arrow" aria-hidden="true">›</span>
+    </button>
+  `;
+};
+
+const renderWorkspaceNavigation = (sections, activeView, expandedGroups, initialRender) => `
+  <label class="workspace-nav-search">
+    <span aria-hidden="true">⌕</span>
+    <input type="search" data-workspace-nav-search placeholder="Cari menu..." aria-label="Cari menu navigasi" />
+  </label>
+  ${sections.map((section) => `
+    <details class="workspace-nav-section" data-nav-group data-nav-state-key="section:${escapeHtml(section.id)}"
+      ${navigationContainsView(section.items, activeView) || expandedGroups.has(`section:${section.id}`) || (initialRender && section.id === 'dashboard') ? 'open' : ''}>
+      <summary>
+        <span>${escapeHtml(section.label)}</span>
+        ${section.badge ? `<span class="workspace-nav-badge ${escapeHtml(section.badgeClass || '')}">${escapeHtml(section.badge)}</span>` : ''}
+        <span class="workspace-nav-caret" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="workspace-nav-children">${section.items.map((item) => renderWorkspaceNavigationNode(item, activeView, expandedGroups)).join('')}</div>
+    </details>
+  `).join('')}
+`;
 
 const getJakartaDateParts = (instant = new Date()) => Object.fromEntries(
   new Intl.DateTimeFormat('en-US', {
@@ -64,26 +154,144 @@ const setSoundtrackPreference = (key, value) => {
   }
 };
 
+const LIGHT_APPEARANCE_COLORS = {
+  ...DEFAULT_LIGHT_THEME_COLORS,
+  accentBorder: '#638D88',
+  accentFill: '#F5E500',
+  accentAltFill: '#E87536',
+};
+
+const getAppearancePreference = () => {
+  try {
+    const stored = localStorage.getItem('hmif-appearance');
+    return stored === 'dark' ? 'dark' : 'light';
+  } catch (error) {
+    console.warn('[HMIF APPEARANCE] Preferensi tema tidak dapat dibaca:', error);
+    return 'light';
+  }
+};
+
+const applyAppearancePalette = (theme, appearance) => {
+  const root = document.documentElement;
+  const themeColors = theme?.colors || {};
+  const colors = appearance === 'light'
+    ? {
+      ...LIGHT_APPEARANCE_COLORS,
+      ...(theme?.lightColors || {}),
+      accentBorder: theme?.lightColors?.accent || LIGHT_APPEARANCE_COLORS.accentBorder,
+      accentFill: theme?.lightColors?.accent || LIGHT_APPEARANCE_COLORS.accentFill,
+      accentAltFill: theme?.lightColors?.accentAlt || LIGHT_APPEARANCE_COLORS.accentAltFill
+    }
+    : {
+      background: '#07090e', panel: '#111723', accent: '#00e5ff', accentAlt: '#ffde00',
+      danger: '#ff3355', success: '#00ff88', info: '#b388ff', text: '#f0f6fc',
+      textMuted: '#9cb1ce', border: '#1e2b40', ...themeColors
+    };
+  const contrastHigh = theme?.contrast === 'high';
+  const backgroundColor = colors.background;
+  const cyanFill = appearance === 'light' ? colors.accentFill : colors.accent;
+  const goldFill = appearance === 'light' ? colors.accentAltFill : colors.accentAlt;
+  const variables = {
+    '--ak-bg-abyss': backgroundColor,
+    '--ak-bg-panel': colors.panel,
+    '--ak-cyan': colors.accent,
+    '--ak-cyan-fill': cyanFill,
+    '--ak-cyan-border': appearance === 'light' ? colors.accentBorder : colors.accent,
+    '--ak-border-active': appearance === 'light' ? colors.accentBorder : colors.accent,
+    '--ak-cyan-deep': `color-mix(in srgb, ${colors.accent} 65%, black)`,
+    '--ak-cyan-glow': `color-mix(in srgb, ${cyanFill} ${appearance === 'light' ? '22%' : '45%'}, transparent)`,
+    '--ak-cyan-subtle': `color-mix(in srgb, ${colors.accent} 12%, transparent)`,
+    '--ak-gold': colors.accentAlt,
+    '--ak-gold-fill': goldFill,
+    '--ak-gold-amber': `color-mix(in srgb, ${colors.accentAlt} 70%, black)`,
+    '--ak-gold-glow': `color-mix(in srgb, ${goldFill} ${appearance === 'light' ? '20%' : '40%'}, transparent)`,
+    '--ak-gold-subtle': `color-mix(in srgb, ${colors.accentAlt} 12%, transparent)`,
+    '--ak-red': colors.danger,
+    '--ak-red-glow': `color-mix(in srgb, ${colors.danger} 40%, transparent)`,
+    '--ak-red-subtle': `color-mix(in srgb, ${colors.danger} 15%, transparent)`,
+    '--ak-green': colors.success,
+    '--ak-green-glow': `color-mix(in srgb, ${colors.success} 35%, transparent)`,
+    '--ak-purple': colors.info,
+    '--ak-purple-subtle': `color-mix(in srgb, ${colors.info} 15%, transparent)`,
+    '--ak-bg-dark': `color-mix(in srgb, ${colors.panel} 72%, ${colors.background})`,
+    '--ak-bg-card': `color-mix(in srgb, ${colors.panel} 84%, ${colors.background})`,
+    '--ak-bg-elevated': `color-mix(in srgb, ${colors.panel} 92%, ${colors.background})`,
+    '--ak-bg-glass': `color-mix(in srgb, ${colors.panel} 85%, transparent)`,
+    '--ak-text-primary': colors.text,
+    '--ak-text-secondary': contrastHigh && appearance === 'dark' ? '#f4f6f8' : contrastHigh ? '#111315' : colors.textMuted,
+    '--ak-text-dim': contrastHigh && appearance === 'light' ? '#343735' : appearance === 'light' ? colors.textMuted : contrastHigh ? '#dce2e8' : `color-mix(in srgb, ${colors.textMuted} 65%, ${colors.background})`,
+    '--ak-text-accent': colors.accentAlt,
+    '--ak-border': contrastHigh && appearance === 'light' ? '#777A73' : contrastHigh ? '#8c9bab' : colors.border,
+    '--ak-border-bright': contrastHigh && appearance === 'light' ? '#555851' : contrastHigh ? '#d3dce5' : `color-mix(in srgb, ${colors.border} 65%, ${colors.textMuted})`,
+    '--grid-pattern': `linear-gradient(to right, color-mix(in srgb, ${colors.accent} 5%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${colors.accent} 5%, transparent) 1px, transparent 1px)`,
+    '--hazard-stripes': `repeating-linear-gradient(-45deg, ${colors.accentAlt}, ${colors.accentAlt} 10px, ${colors.panel} 10px, ${colors.panel} 20px)`,
+    '--hazard-subtle': `repeating-linear-gradient(-45deg, color-mix(in srgb, ${colors.accentAlt} 18%, transparent), color-mix(in srgb, ${colors.accentAlt} 18%, transparent) 8px, transparent 8px, transparent 16px)`
+  };
+  for (const [name, value] of Object.entries(variables)) root.style.setProperty(name, value);
+  root.style.setProperty('--site-type-scale', `${theme?.typeScale || 16}px`);
+  root.dataset.theme = appearance;
+  root.style.colorScheme = appearance;
+  root.dataset.contrast = theme?.contrast || 'normal';
+  root.dataset.motion = theme?.motion === false ? 'off' : 'on';
+
+  const background = document.querySelector('.global-bg-wrapper');
+  if (background) {
+    const photoUrl = resolveBackgroundImage(theme?.background);
+    const mode = theme?.background?.mode || 'solid';
+    background.style.backgroundColor = backgroundColor;
+    background.style.backgroundRepeat = 'no-repeat';
+    background.style.backgroundPosition = 'center';
+    background.style.backgroundAttachment = 'fixed';
+    if (appearance === 'light') {
+      const veil = `linear-gradient(color-mix(in srgb, ${backgroundColor} 92%, transparent), color-mix(in srgb, ${backgroundColor} 96%, transparent))`;
+      if (mode === 'grid' && !photoUrl) background.style.backgroundImage = 'var(--grid-pattern)';
+      else if (mode !== 'solid' && photoUrl) background.style.backgroundImage = `${veil}, url("${photoUrl}")`;
+      else background.style.backgroundImage = 'none';
+      background.style.backgroundSize = mode === 'grid' && !photoUrl ? '40px 40px' : '100% 100%, cover';
+    } else {
+      const veil = `linear-gradient(color-mix(in srgb, ${colors.background} 88%, transparent), color-mix(in srgb, ${colors.background} 96%, transparent))`;
+      const radial = `radial-gradient(circle at 50% 0%, color-mix(in srgb, ${colors.accent} 8%, transparent) 0%, transparent 60%)`;
+      if (mode === 'grid' && !photoUrl) background.style.backgroundImage = `${radial}, var(--grid-pattern)`;
+      else if (mode !== 'solid' && photoUrl) background.style.backgroundImage = `${radial}, ${veil}, url("${photoUrl}")`;
+      else background.style.backgroundImage = radial;
+      background.style.backgroundSize = mode === 'grid' && !photoUrl ? '100% 100%, 40px 40px' : '100% 100%, 100% 100%, cover';
+    }
+  }
+
+  root.style.setProperty('--card-bg', colors.panel);
+  root.style.setProperty('--border-color', colors.border);
+  root.style.setProperty('--text-primary', colors.text);
+  root.style.setProperty('--text-secondary', colors.textMuted);
+  root.style.setProperty('--accent-color', cyanFill);
+  root.style.setProperty('--accent-hover', `color-mix(in srgb, ${cyanFill} 82%, #111315)`);
+  root.style.setProperty('--success-color', colors.success);
+  root.style.setProperty('--danger-color', colors.danger);
+  root.style.setProperty('--bg-secondary', colors.panel);
+};
+
 class PRTSApplication {
   constructor() {
     this.api = prtsApi;
-    this.siteStudio = new SiteStudio(this.api, {
-      openModal: () => { },
-      closeModal: () => this.openWorkspace('home'),
-      getContainer: () => document.getElementById('workspace-content'),
-      applyConfig: (config, options) => this.applySiteConfig(config, options)
-    });
-    this.adminConsole = new AdminConsole(this.api, {
-      openModal: () => { },
-      closeModal: () => this.openWorkspace('home'),
-      getContainer: () => document.getElementById('workspace-content'),
-      refreshData: async () => {
-        await this.syncApiData();
-        await this.adminConsole.open();
+    this.campusMap = new CampusMapView(() => this.switchTab('campus-map'));
+    this.siteHierarchies = new SiteHierarchiesView(
+      (tabId) => this.switchTab(tabId),
+      (tabId) => {
+        const section = document.getElementById(`section-${tabId}`);
+        return Boolean(section && section.dataset.siteVisible !== 'false' && this.canAccessSection(section));
       }
-    });
-    this.academicConsole = new AcademicConsole(this.api);
-    initVotingEvents();
+    );
+    this.siteStudio = null;
+    this.siteConfig = null;
+    this.appearance = getAppearancePreference();
+    this.adminConsole = null;
+    this.academicConsole = null;
+    this.siteStudioLoader = null;
+    this.adminConsoleLoader = null;
+    this.academicConsoleLoader = null;
+    this.constitutionArticles = null;
+    this.constitutionMetadata = null;
+    this.constitutionDataLoader = null;
+    this.constitutionLoadNotice = '';
     this.currentTab = 'dashboard';
     const todayInJakarta = getJakartaDateParts();
     this.currentCalendarMonth = todayInJakarta.month;
@@ -94,6 +302,8 @@ class PRTSApplication {
     this.selectedDepartmentId = '';
     this.selectedDivisionId = '';
     this.workspaceView = 'home';
+    this.selectedLearningPathId = '';
+    this.selectedSupportTicketId = '';
     this.modalReturnFocus = null;
     this.modalPreviousOverflow = '';
     this.aspirasiLog = this.loadAspirasi();
@@ -111,6 +321,130 @@ class PRTSApplication {
     if (!this.certificateRoute) this.syncApiData();
   }
 
+  async loadSiteStudio() {
+    if (!this.siteStudio) {
+      this.siteStudioLoader ||= import('./siteStudio.js')
+        .then(({ SiteStudio }) => {
+          this.siteStudio = new SiteStudio(this.api, {
+            openModal: () => { },
+            closeModal: () => this.openWorkspace('home'),
+            getContainer: () => document.getElementById('workspace-content'),
+            getTabContainer: () => document.getElementById('workspace-studio-tablist'),
+            applyConfig: (config, options) => this.applySiteConfig(config, options),
+            showPreview: () => this.showSitePreview(),
+            returnToStudio: () => this.returnToSiteStudio()
+          });
+          return this.siteStudio;
+        })
+        .catch((error) => {
+          this.siteStudioLoader = null;
+          throw error;
+        });
+      await this.siteStudioLoader;
+    }
+    if (this.workspaceView === 'studio') this.siteStudio.open();
+  }
+
+  async openAdminConsole() {
+    if (!this.adminConsole) {
+      this.adminConsoleLoader ||= import('./adminConsole.js')
+        .then(({ AdminConsole }) => {
+          this.adminConsole = new AdminConsole(this.api, {
+            openModal: () => { },
+            closeModal: () => this.openWorkspace('home'),
+            getContainer: () => document.getElementById('workspace-content'),
+            getOperationsTabContainer: () => document.getElementById('workspace-operations-tablist'),
+            refreshData: async () => {
+              await this.syncApiData();
+              await this.adminConsole.open();
+            }
+          });
+          return this.adminConsole;
+        })
+        .catch((error) => {
+          this.adminConsoleLoader = null;
+          throw error;
+        });
+      await this.adminConsoleLoader;
+    }
+    if (this.workspaceView === 'operations') this.adminConsole.open();
+  }
+
+  async openAcademicConsole(content, isSuperadmin) {
+    if (!this.academicConsole) {
+      this.academicConsoleLoader ||= import('./academicConsole.js')
+        .then(({ AcademicConsole }) => {
+          this.academicConsole = new AcademicConsole(this.api);
+          return this.academicConsole;
+        })
+        .catch((error) => {
+          this.academicConsoleLoader = null;
+          throw error;
+        });
+      await this.academicConsoleLoader;
+    }
+    if (this.workspaceView === 'academic' && content.isConnected) {
+      this.academicConsole.open(content, isSuperadmin);
+    }
+  }
+
+  async loadConstitutionData() {
+    if (this.constitutionArticles) return;
+    this.constitutionDataLoader ||= import('./constitutionData.js')
+      .then(async ({ FULL_CONSTITUTION_DATA, CONSTITUTION_DOCUMENT_METADATA }) => {
+        if (!Array.isArray(FULL_CONSTITUTION_DATA) || FULL_CONSTITUTION_DATA.length === 0) {
+          throw new Error('Naskah AD/ART tidak tersedia dalam format yang dapat dibaca.');
+        }
+        this.constitutionArticles = FULL_CONSTITUTION_DATA;
+        this.constitutionMetadata = CONSTITUTION_DOCUMENT_METADATA;
+        const officialResult = await this.api.getOfficialGovernanceDocuments();
+        if (officialResult.ok && Array.isArray(officialResult.data?.documents) && officialResult.data.documents.length) {
+          this.constitutionArticles = officialResult.data.documents;
+          this.constitutionMetadata = officialResult.data.metadata || CONSTITUTION_DOCUMENT_METADATA;
+          this.constitutionLoadNotice = '';
+        } else {
+          this.constitutionLoadNotice = `Naskah terbaru dari server tidak tersedia; yang ditampilkan adalah salinan repository. ${officialResult.error || ''}`.trim();
+          console.warn('[PRTS DOCTRINE] Naskah terbaru tidak tersedia:', officialResult.error || 'Respons tidak valid.');
+        }
+        return this.constitutionArticles;
+      })
+      .catch((error) => {
+        this.constitutionDataLoader = null;
+        throw error;
+      });
+    await this.constitutionDataLoader;
+    this.renderDoctrine(this.constitutionArticles);
+  }
+
+  reportConstitutionLoadError(error) {
+    if (this.currentTab !== 'doctrine') return;
+    console.error('[PRTS DOCTRINE] Naskah AD/ART gagal dimuat:', error);
+    const accordion = document.getElementById('adart-accordion-container');
+    if (!accordion) return;
+    accordion.innerHTML = `
+      <p class="workspace-feature-error" role="alert">Naskah AD/ART gagal dimuat.</p>
+      <button type="button" class="btn-tactical" data-constitution-retry>COBA LAGI</button>
+    `;
+    accordion.querySelector('[data-constitution-retry]')?.addEventListener('click', () => {
+      accordion.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat naskah AD/ART...</p>';
+      this.loadConstitutionData().catch((loadError) => this.reportConstitutionLoadError(loadError));
+    });
+  }
+
+  reportWorkspaceModuleError(content, view, label, error) {
+    if (!content.isConnected || this.workspaceView !== view) return;
+    console.error(`[PRTS WORKSPACE] Modul ${label} gagal dimuat:`, error);
+    content.innerHTML = `
+      <section class="workspace-module-placeholder" role="alert">
+        <span class="section-tag gold">MODUL TIDAK TERSEDIA</span>
+        <h2>${escapeHtml(label)} gagal dimuat.</h2>
+        <p>Silakan coba lagi. Jika masalah berlanjut, hubungi administrator.</p>
+        <button type="button" class="btn-tactical primary">KEMBALI KE DASHBOARD</button>
+      </section>
+    `;
+    content.querySelector('button')?.addEventListener('click', () => this.openWorkspace('home'));
+  }
+
   init() {
     if (this.certificateRoute) {
       this.renderCertificateVerification(this.certificateRoute);
@@ -119,6 +453,7 @@ class PRTSApplication {
 
     // 1. Initialize canvas dust background
     this.dustEngine = new CanvasDustEngine('canvas-dust');
+    this.dustEngine.setTheme(this.appearance);
 
     // 2. Real-time telemetry clock
     this.initClock();
@@ -228,7 +563,7 @@ class PRTSApplication {
 
     await this.syncPortalRecords();
 
-    if (this.api.isSuperadmin || this.api.clearanceLevel >= 3) {
+    if (hasWorkspaceCapability(this.api.currentUser, 'aspirations.manage')) {
       const aspirationsResult = await this.api.getAspirations();
       if (aspirationsResult.ok && Array.isArray(aspirationsResult.data)) {
         this.aspirasiLog = aspirationsResult.data.map((item) => ({
@@ -252,16 +587,44 @@ class PRTSApplication {
     return this.openWorkspace('studio');
   }
 
+  showSitePreview() {
+    const workspace = document.getElementById('member-workspace');
+    const portal = document.querySelector('.app-content');
+    if (!workspace || !portal) return;
+    this.switchTab('dashboard', { replace: true, focus: false, scroll: false });
+    window.history.replaceState({ workspaceView: 'studio', preview: true }, '', '#workspace/studio');
+    workspace.hidden = true;
+    portal.hidden = false;
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  returnToSiteStudio() {
+    const workspace = document.getElementById('member-workspace');
+    const portal = document.querySelector('.app-content');
+    if (!workspace || !portal) return;
+    workspace.hidden = false;
+    portal.hidden = true;
+    this.workspaceView = 'studio';
+    window.history.replaceState({ workspaceView: 'studio' }, '', '#workspace/studio');
+    const title = document.getElementById('workspace-page-title');
+    if (title) title.textContent = 'Site Studio';
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
   async applySiteConfig(config, { preview = false } = {}) {
     if (!config) return;
     const siteData = config.content?.data || {};
     HMIF_DATA.identity = { ...HMIF_DATA.identity, ...(siteData.identity || {}), logo: siteData.identity?.logo ?? HMIF_DATA.identity.logo ?? '/assets/hmif_umb_logo.png' };
     HMIF_DATA.visionMission = siteData.visionMission || HMIF_DATA.visionMission;
     HMIF_DATA.departments = Array.isArray(siteData.departments) ? siteData.departments : (HMIF_DATA.departments || []);
+    HMIF_DATA.organizationStructure = siteData.organizationStructure || { people: [], terms: [] };
     HMIF_DATA.knowledgeResources = Array.isArray(siteData.knowledgeResources) ? siteData.knowledgeResources : (HMIF_DATA.knowledgeResources || []);
     HMIF_DATA.generations = Array.isArray(siteData.generations) ? siteData.generations : (HMIF_DATA.generations || []);
     HMIF_DATA.operators = Array.isArray(siteData.operators) ? siteData.operators : HMIF_DATA.operators;
     HMIF_DATA.news = Array.isArray(siteData.news) ? siteData.news : HMIF_DATA.news;
+    this.campusMap.setData(siteData.campusMap, {
+      mapPageVisible: config.pages.find(({ id }) => id === 'campus-map')?.visible !== false
+    });
     HMIF_DATA.doctrine = siteData.doctrine || HMIF_DATA.doctrine;
     const siteContent = {
       heroActions: ['JELAJAHI PROGRAM KERJA', 'KALENDER PENDIDIKAN', 'PEDOMAN KADERISASI'],
@@ -317,6 +680,8 @@ class PRTSApplication {
     setText('#section-doctrine .section-desc', siteContent.sectionDescriptions.doctrine);
     setText('#section-intel .section-desc', siteContent.sectionDescriptions.intel);
     setText('#section-commlink .section-desc', siteContent.sectionDescriptions.commlink);
+    setText('#section-site-map .section-desc', siteContent.sectionDescriptions['site-map']);
+    setText('#section-university-organization .section-desc', siteContent.sectionDescriptions['university-organization']);
     const heroTitle = document.querySelector('.hero-title');
     if (heroTitle) {
       const firstLine = document.createTextNode('HIMPUNAN MAHASISWA');
@@ -330,43 +695,11 @@ class PRTSApplication {
       universityName.textContent = HMIF_DATA.identity.university;
       heroTitle.replaceChildren(firstLine, lineBreakOne, programName, lineBreakTwo, universityName);
     }
+    this.siteConfig = config;
     const root = document.documentElement;
-    const colors = config.theme.colors;
-    const variables = {
-      '--ak-bg-abyss': colors.background,
-      '--ak-bg-panel': colors.panel,
-      '--ak-cyan': colors.accent,
-      '--ak-cyan-border': colors.accent,
-      '--ak-border-active': colors.accent,
-      '--ak-cyan-deep': `color-mix(in srgb, ${colors.accent} 65%, black)`,
-      '--ak-cyan-glow': `color-mix(in srgb, ${colors.accent} 45%, transparent)`,
-      '--ak-cyan-subtle': `color-mix(in srgb, ${colors.accent} 12%, transparent)`,
-      '--ak-gold': colors.accentAlt,
-      '--ak-gold-amber': `color-mix(in srgb, ${colors.accentAlt} 70%, black)`,
-      '--ak-gold-glow': `color-mix(in srgb, ${colors.accentAlt} 40%, transparent)`,
-      '--ak-gold-subtle': `color-mix(in srgb, ${colors.accentAlt} 12%, transparent)`,
-      '--ak-red': colors.danger,
-      '--ak-red-glow': `color-mix(in srgb, ${colors.danger} 40%, transparent)`,
-      '--ak-red-subtle': `color-mix(in srgb, ${colors.danger} 15%, transparent)`,
-      '--ak-green': colors.success,
-      '--ak-green-glow': `color-mix(in srgb, ${colors.success} 35%, transparent)`,
-      '--ak-purple': colors.info,
-      '--ak-purple-subtle': `color-mix(in srgb, ${colors.info} 15%, transparent)`,
-      '--ak-bg-dark': `color-mix(in srgb, ${colors.panel} 72%, ${colors.background})`,
-      '--ak-bg-card': `color-mix(in srgb, ${colors.panel} 84%, ${colors.background})`,
-      '--ak-bg-elevated': `color-mix(in srgb, ${colors.panel} 92%, ${colors.background})`,
-      '--ak-bg-glass': `color-mix(in srgb, ${colors.panel} 85%, transparent)`,
-      '--ak-text-primary': colors.text,
-      '--ak-text-secondary': config.theme.contrast === 'high' ? '#f4f6f8' : colors.textMuted,
-      '--ak-text-dim': config.theme.contrast === 'high' ? '#dce2e8' : `color-mix(in srgb, ${colors.textMuted} 65%, ${colors.background})`,
-      '--ak-border': config.theme.contrast === 'high' ? '#8c9bab' : colors.border,
-      '--ak-border-bright': config.theme.contrast === 'high' ? '#d3dce5' : `color-mix(in srgb, ${colors.border} 65%, ${colors.textMuted})`,
-      '--site-type-scale': `${config.theme.typeScale}px`,
-      '--grid-pattern': `linear-gradient(to right, color-mix(in srgb, ${colors.accent} 5%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${colors.accent} 5%, transparent) 1px, transparent 1px)`,
-      '--hazard-stripes': `repeating-linear-gradient(-45deg, ${colors.accentAlt}, ${colors.accentAlt} 10px, ${colors.panel} 10px, ${colors.panel} 20px)`,
-      '--hazard-subtle': `repeating-linear-gradient(-45deg, color-mix(in srgb, ${colors.accentAlt} 18%, transparent), color-mix(in srgb, ${colors.accentAlt} 18%, transparent) 8px, transparent 8px, transparent 16px)`
-    };
-    for (const [name, value] of Object.entries(variables)) root.style.setProperty(name, value);
+    applyAppearancePalette(config.theme, this.appearance);
+    this.dustEngine?.setTheme(this.appearance, config.theme.motion, config.theme.dust);
+    root.style.setProperty('--site-type-scale', `${config.theme.typeScale}px`);
 
     const fontFamily = async (font) => {
       if (!font.startsWith('asset:')) return font;
@@ -390,32 +723,16 @@ class PRTSApplication {
     const appContent = document.querySelector('.app-content');
     if (appContent) appContent.dataset.shape = config.theme.shape;
     root.dataset.iconStyle = config.theme.iconStyle;
-    root.dataset.contrast = config.theme.contrast;
-    root.dataset.motion = config.theme.motion ? 'on' : 'off';
 
-    const background = document.querySelector('.global-bg-wrapper');
-    if (background) {
-      const photoUrl = resolveBackgroundImage(config.theme.background);
-      const veil = `linear-gradient(color-mix(in srgb, ${colors.background} 88%, transparent), color-mix(in srgb, ${colors.background} 96%, transparent))`;
-      const radial = `radial-gradient(circle at 50% 0%, color-mix(in srgb, ${colors.accent} 8%, transparent) 0%, transparent 60%)`;
-      background.style.backgroundColor = colors.background;
-      background.style.backgroundRepeat = 'no-repeat';
-      background.style.backgroundPosition = 'center';
-      background.style.backgroundAttachment = 'fixed';
-      if (config.theme.background.mode === 'solid' || !photoUrl) {
-        background.style.backgroundImage = config.theme.background.mode === 'grid' ? `${radial}, var(--grid-pattern)` : radial;
-        background.style.backgroundSize = config.theme.background.mode === 'grid' ? '100% 100%, 40px 40px' : '100% 100%';
-      } else {
-        background.style.backgroundImage = `${radial}, ${veil}, url("${photoUrl}")`;
-        background.style.backgroundSize = '100% 100%, 100% 100%, cover';
-      }
-    }
     const heroOverlay = document.querySelector('.hero-bg-overlay');
     if (heroOverlay) {
       heroOverlay.style.backgroundImage = config.theme.heroImage ? `url("${config.theme.heroImage}")` : 'none';
     }
 
     const main = document.querySelector('.main-content');
+    main?.querySelectorAll('[data-custom-page-section]').forEach((section) => section.remove());
+    const nav = document.querySelector('.prts-nav');
+    nav?.querySelectorAll('[data-custom-page-nav]').forEach((link) => link.remove());
     const sections = new Map(config.pages.map((block) => [block.id, block]));
     const orderedSections = config.pages
       .map((block) => document.getElementById(`section-${block.id}`))
@@ -433,15 +750,91 @@ class PRTSApplication {
       if (anchor.parentElement !== main) main.append(anchor);
     }
 
-    const nav = document.querySelector('.prts-nav');
-    if (nav) {
-      for (const block of config.pages) {
-        const navButton = nav.querySelector(`.nav-link[data-tab="${block.id}"]`);
-        if (navButton) nav.append(navButton);
+    for (const page of config.content.customPages || []) {
+      const tabId = `custom-${page.id}`;
+      if (main) {
+        const section = document.createElement('section');
+        section.id = `section-${tabId}`;
+        section.className = 'content-section custom-page-section';
+        section.dataset.customPageSection = page.id;
+        section.dataset.siteVisible = String(page.visible);
+        section.dataset.layout = page.layout;
+        section.hidden = true;
+        section.inert = true;
+        section.setAttribute('aria-hidden', 'true');
+
+        const header = document.createElement('header');
+        header.className = 'section-header';
+        const tag = document.createElement('div');
+        tag.className = 'section-tag';
+        tag.textContent = `CUSTOM PAGE // ${page.slug.toUpperCase()}`;
+        const title = document.createElement('h2');
+        title.className = 'section-title';
+        title.textContent = page.title;
+        const description = document.createElement('p');
+        description.className = 'section-desc';
+        description.textContent = page.description;
+        header.append(tag, title, description);
+        section.append(header);
+
+        for (const block of page.blocks) {
+          const module = document.createElement('article');
+          module.className = `custom-page-module custom-page-module--${block.type}`;
+          if (block.type === 'notice') module.dataset.tone = block.tone;
+          const moduleTitle = document.createElement('h3');
+          moduleTitle.textContent = block.title;
+          const body = document.createElement('p');
+          body.textContent = block.body;
+          module.append(moduleTitle, body);
+          section.append(module);
+        }
+        main.append(section);
       }
-      const squadNav = nav.querySelector('.nav-link[data-tab="squad"]');
-      const cohortNav = nav.querySelector('.nav-link[data-tab="cohort"]');
-      if (squadNav && cohortNav) squadNav.after(cohortNav);
+
+      if (nav) {
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'nav-link';
+        link.dataset.tab = tabId;
+        link.dataset.customPageNav = page.id;
+        link.hidden = !page.visible;
+        const index = document.createElement('span');
+        index.className = 'nav-idx';
+        index.textContent = String(nav.querySelectorAll('.nav-link').length + 1).padStart(2, '0');
+        const label = document.createElement('span');
+        label.textContent = page.title;
+        link.append(index, label);
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          this.switchTab(tabId);
+          this.closeSidebarOnMobile();
+          prtsSound.playAccess();
+        });
+        nav.append(link);
+      }
+    }
+
+    this.siteHierarchies.setConfig(config);
+
+    if (nav) {
+      const sidebarOrder = config.content.sidebarOrder
+        || [...config.pages.map(({ id }) => id), ...(config.content.customPages || []).map(({ id }) => `custom-${id}`)];
+      const navLinks = [...nav.querySelectorAll('.nav-link[data-tab]')];
+      for (const id of sidebarOrder) {
+        const link = navLinks.find((item) => item.dataset.tab === id);
+        if (link) nav.append(link);
+      }
+    }
+
+    if (main && nav) {
+      for (const link of nav.querySelectorAll('.nav-link[data-tab]')) {
+        const section = document.getElementById(`section-${link.dataset.tab}`);
+        if (section) main.append(section);
+      }
+      const departmentDetail = document.getElementById('section-department');
+      const squadSection = document.getElementById('section-squad');
+      if (departmentDetail && squadSection) squadSection.after(departmentDetail);
+      else if (departmentDetail) main.append(departmentDetail);
     }
 
     for (const block of config.pages) {
@@ -453,6 +846,13 @@ class PRTSApplication {
       const nav = document.querySelector(`.nav-link[data-tab="${block.id}"]`);
       if (nav) nav.hidden = !block.visible;
       document.querySelectorAll(`[data-directory-tab="${block.id}"]`).forEach((link) => { link.hidden = !block.visible; });
+    }
+    if (nav) {
+      let visibleIndex = 0;
+      nav.querySelectorAll('.nav-link[data-tab]').forEach((link) => {
+        const number = link.querySelector('.nav-idx');
+        if (number) number.textContent = link.hidden ? '' : String(++visibleIndex).padStart(2, '0');
+      });
     }
     const visionHeading = document.querySelector('#section-vision .section-title');
     if (visionHeading && typeof siteContent.sectionTitles.vision === 'string') visionHeading.textContent = siteContent.sectionTitles.vision;
@@ -471,7 +871,7 @@ class PRTSApplication {
     this.renderKnowledgeResources();
     if (!window.location.hash.startsWith('#workspace/')) {
       const route = this.readRouteFromHash();
-      this.switchTab(route.tabId, { departmentId: route.departmentId, divisionId: route.divisionId, replace: true, focus: false, scroll: false });
+      this.switchTab(route.tabId, { departmentId: route.departmentId, divisionId: route.divisionId, replace: true, focus: false, scroll: route.tabId !== 'dashboard' });
     }
 
     let previewBanner = document.getElementById('site-preview-banner');
@@ -480,7 +880,10 @@ class PRTSApplication {
       previewBanner.id = 'site-preview-banner';
       previewBanner.className = 'site-preview-banner';
       previewBanner.setAttribute('role', 'status');
-      previewBanner.textContent = 'PRATINJAU DRAFT // HANYA TERLIHAT DI SESI SUPERADMIN';
+      previewBanner.innerHTML = `
+        <span>PRATINJAU DRAFT // HANYA TERLIHAT DI SESI SUPERADMIN</span>
+        <button type="button" data-studio-return aria-label="Kembali ke Site Studio">KEMBALI KE STUDIO</button>`;
+      previewBanner.querySelector('[data-studio-return]')?.addEventListener('click', () => this.returnToSiteStudio());
       document.querySelector('.app-content')?.prepend(previewBanner);
     } else if (!preview && previewBanner) {
       previewBanner.remove();
@@ -547,6 +950,7 @@ class PRTSApplication {
       this.openLoginDialog();
       return;
     }
+    this.restoreWorkspacePublicFeature();
 
     const workspace = document.getElementById('member-workspace');
     const portal = document.querySelector('.app-content');
@@ -561,11 +965,26 @@ class PRTSApplication {
     const access = getWorkspaceConfiguration({
       isSuperadmin,
       clearanceLevel: this.api.clearanceLevel,
-      permissions: user.permissions || []
+      permissions: user.permissions || [],
+      positionCapabilities: user.position_capabilities || []
     });
-    const { clearance, roleName, dashboardName, pages } = access;
+    const { clearance, roleName, dashboardName, pages, sections } = access;
     const canOperate = pages.some(({ id }) => id === 'operations');
-    const allowedView = pages.some((page) => page.id === view) ? view : 'home';
+    const requestedNavigationEntry = findWorkspaceNavigationEntry(sections, view);
+    const navigationEntry = requestedNavigationEntry?.status === 'available'
+      ? requestedNavigationEntry
+      : undefined;
+    const canOpenNavigationEntry = Boolean(navigationEntry);
+    const allowedView = pages.some((page) => page.id === view) || canOpenNavigationEntry ? view : 'home';
+    const pageView = navigationEntry?.publicTab
+      ? 'public-feature'
+      : navigationEntry?.workspaceView || allowedView;
+    const navigationScrollTop = navigation.scrollTop;
+    const expandedNavigationGroups = new Set(
+      [...navigation.querySelectorAll('details[data-nav-state-key][open]')]
+        .map((group) => group.dataset.navStateKey)
+    );
+    const initialNavigationRender = navigation.dataset.rendered !== 'true';
     const workspaceAudience = isSuperadmin
       ? 'RUANG ADMINISTRATOR'
       : clearance >= 2 ? 'RUANG PENGURUS' : 'RUANG ANGGOTA';
@@ -575,13 +994,21 @@ class PRTSApplication {
       profile: 'Profil & keamanan',
       operations: 'Operasional organisasi',
       academic: 'Pusat Akademik',
+      meetings: 'Rapat HMIF',
+      voting: 'Pemungutan suara',
+      'student-demographics': 'Statistik mahasiswa',
+      'governance-documents': 'Amandemen AD/ART/GBHO',
+      'position-access': 'Akses jabatan',
       studio: 'Site Studio'
     };
-    this.workspaceView = allowedView;
+    this.workspaceView = pageView;
     portal.hidden = true;
     workspace.hidden = false;
     workspace.dataset.clearance = isSuperadmin ? 'superadmin' : String(clearance);
     workspace.setAttribute('aria-label', `Dashboard ${dashboardName} HMIF`);
+    workspace.dataset.view = pageView;
+    if (workspace.dataset.sidebarCollapsed === undefined) workspace.dataset.sidebarCollapsed = 'false';
+    this.syncWorkspaceSidebar(workspace);
     navigation.setAttribute('aria-label', `Navigasi dashboard ${dashboardName.toLowerCase()}`);
     workspace.querySelectorAll('[data-workspace-audience]').forEach((label) => {
       label.textContent = workspaceAudience;
@@ -592,54 +1019,95 @@ class PRTSApplication {
       <span>${escapeHtml(user.role_title || dashboardName)}</span>
       <small>${escapeHtml(roleName)} // ${escapeHtml(user.division || 'HMIF UMB')}</small>
     `;
-    navigation.innerHTML = pages.map((page) => `
-      <button type="button" class="workspace-nav-link ${page.id === allowedView ? 'active' : ''}" data-workspace-view="${page.id}" ${page.id === allowedView ? 'aria-current="page"' : ''}>
-        <span>${escapeHtml(page.label)}</span><span aria-hidden="true">›</span>
-      </button>
-    `).join('');
-    title.textContent = pageTitles[allowedView];
+    navigation.innerHTML = renderWorkspaceNavigation(
+      sections,
+      navigationEntry?.menuId || allowedView,
+      expandedNavigationGroups,
+      initialNavigationRender
+    );
+    navigation.dataset.rendered = 'true';
+    const studioTabs = navigation.querySelector('#workspace-studio-tabs');
+    const studioTablist = navigation.querySelector('#workspace-studio-tablist');
+    const operationsTabs = navigation.querySelector('#workspace-operations-tabs');
+    const operationsTablist = navigation.querySelector('#workspace-operations-tablist');
+    if (studioTabs) {
+      studioTabs.hidden = pageView !== 'studio';
+      if (pageView !== 'studio') studioTablist?.replaceChildren();
+    }
+    if (operationsTabs) {
+      operationsTabs.hidden = pageView !== 'operations';
+      if (pageView !== 'operations') operationsTablist?.replaceChildren();
+    }
+    navigation.scrollTop = Math.min(navigationScrollTop, Math.max(0, navigation.scrollHeight - navigation.clientHeight));
+    title.textContent = navigationEntry?.label || pageTitles[pageView] || 'Dashboard';
+    if (!workspace.dataset.navigationBound) {
+      workspace.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) return;
+        if (event.target.closest('[data-workspace-sidebar-toggle]')) {
+          this.toggleWorkspaceSidebar();
+          return;
+        }
+        if (event.target.closest('[data-workspace-public]')) {
+          event.preventDefault();
+          this.closeWorkspace();
+          return;
+        }
+        if (event.target.closest('[data-workspace-profile]')) this.openWorkspace('profile');
+      });
+      workspace.dataset.navigationBound = 'true';
+    }
+    const navSearch = navigation.querySelector('[data-workspace-nav-search]');
+    navSearch?.addEventListener('input', () => {
+      const query = navSearch.value.trim().toLocaleLowerCase();
+      navigation.querySelectorAll('[data-nav-entry]').forEach((entry) => {
+        entry.hidden = Boolean(query) && !entry.dataset.navLabel.includes(query);
+      });
+      [...navigation.querySelectorAll('[data-nav-group]')].reverse().forEach((group) => {
+        const children = group.querySelector(':scope > .workspace-nav-children');
+        const hasVisibleChildren = [...(children?.children || [])].some((child) => !child.hidden);
+        group.hidden = !hasVisibleChildren;
+        if (query && hasVisibleChildren) group.open = true;
+      });
+    });
+    navigation.querySelectorAll('[data-workspace-subnav] > summary').forEach((summary) => {
+      summary.addEventListener('click', (event) => {
+        const group = summary.parentElement;
+        const view = group?.dataset.workspaceSubnav;
+        if (!view || pageView === view) return;
+        event.preventDefault();
+        this.openWorkspace(view);
+      });
+    });
     navigation.querySelectorAll('[data-workspace-view]').forEach((button) => {
       button.addEventListener('click', () => this.openWorkspace(button.dataset.workspaceView));
     });
-    workspace.querySelectorAll('[data-workspace-public]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        this.closeWorkspace();
-      });
-    });
-    workspace.querySelector('[data-workspace-profile]')?.addEventListener('click', () => this.openWorkspace('profile'));
-
     if (!fromHistory && window.location.hash !== `#workspace/${allowedView}`) {
       window.history.pushState({ workspaceView: allowedView }, '', `#workspace/${allowedView}`);
     }
 
-    if (allowedView === 'home') {
-      if (isSuperadmin) {
+    const homeViews = ['home', 'attendance', 'tickets'];
+    if (homeViews.includes(pageView)) {
+      if (isSuperadmin && pageView === 'home') {
         content.innerHTML = `
         <section class="workspace-dashboard-hero" aria-labelledby="workspace-welcome-title">
           <div class="workspace-dashboard-hero-copy">
             <span class="section-tag cyan">HMIF UMB // PUSAT KENDALI</span>
             <h2 id="workspace-welcome-title">Selamat datang, ${escapeHtml(user.name)}.</h2>
             <p>Ikhtisar pengelolaan portal, aktivitas organisasi, dan layanan digital HMIF.</p>
-            <div class="workspace-dashboard-actions">
-              <button type="button" class="btn-tactical primary" data-workspace-view="studio">BUKA SITE STUDIO</button>
-              <button type="button" class="btn-tactical" data-workspace-view="operations">LIHAT OPERASIONAL</button>
-              <button type="button" class="btn-tactical" data-workspace-view="academic">PUSAT AKADEMIK</button>
-            </div>
           </div>
           <div class="workspace-dashboard-health" data-dashboard-health role="status">MEMUAT DATA PORTAL...</div>
         </section>
-        <section class="workspace-dashboard-metrics" aria-label="Ringkasan portal" data-dashboard-metrics>
-          <p role="status">Memuat ringkasan portal...</p>
-        </section>
         <section class="workspace-action-center" aria-labelledby="workspace-action-center-title">
           <div class="workspace-panel-heading">
-            <div><span class="section-tag gold">TINDAK LANJUT</span><h2 id="workspace-action-center-title">Pusat tindakan</h2></div>
+            <div><span class="section-tag gold">PRIORITAS // TINDAK LANJUT</span><h2 id="workspace-action-center-title">Pusat tindakan</h2></div>
             <span class="workspace-panel-note">ANTREAN ADMIN</span>
           </div>
           <div class="workspace-action-list" data-dashboard-actions aria-live="polite">
             <p role="status">Memuat antrean tindakan...</p>
           </div>
+        </section>
+        <section class="workspace-dashboard-metrics" aria-label="Ringkasan portal" data-dashboard-metrics>
+          <p role="status">Memuat ringkasan portal...</p>
         </section>
         <div class="workspace-dashboard-grid">
           <section class="workspace-dashboard-panel" aria-labelledby="workspace-activity-title">
@@ -688,6 +1156,13 @@ class PRTSApplication {
         </section>
       `;
         this.loadSuperadminDashboard(content);
+      } else if (pageView === 'home') {
+        content.innerHTML = `
+          <div class="workspace-member-home" data-member-dashboard>
+            <p class="workspace-feature-loading" role="status">Memuat ringkasan akun, pembelajaran, bantuan, dan agenda...</p>
+          </div>
+        `;
+        this.loadMemberDashboard(content, user, roleName);
       } else {
         content.innerHTML = `
         <section class="workspace-welcome" aria-labelledby="workspace-welcome-title">
@@ -714,24 +1189,292 @@ class PRTSApplication {
       this.renderAttendanceCheckIn(content);
       this.renderMyEventTickets(content);
       this.renderMyDelegations(content);
+      const workspaceAnchor = {
+        attendance: '[data-workspace-anchor="attendance"]',
+        tickets: '[data-workspace-anchor="tickets"]',
+        delegations: '[data-workspace-anchor="delegations"]'
+      }[pageView];
+      if (workspaceAnchor) {
+        requestAnimationFrame(() => content.querySelector(workspaceAnchor)?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start'
+        }));
+      }
       content.querySelectorAll('[data-workspace-view]').forEach((button) => button.addEventListener('click', () => this.openWorkspace(button.dataset.workspaceView)));
-      content.querySelectorAll('[data-workspace-public]').forEach((button) => button.addEventListener('click', () => this.closeWorkspace()));
-    } else if (allowedView === 'notifications') {
+    } else if (pageView === 'delegations') {
+      content.replaceChildren();
+      this.renderMyDelegations(content);
+    } else if (pageView === 'attendance-checkin') {
+      content.replaceChildren();
+      this.renderAttendanceCheckIn(content);
+    } else if (pageView === 'attendance-tickets') {
+      content.replaceChildren();
+      this.renderMyEventTickets(content);
+    } else if (pageView === 'notifications') {
       this.renderWorkspaceNotifications(content);
-    } else if (allowedView === 'profile') {
+    } else if (pageView === 'profile') {
       this.openAccountDialog();
-    } else if (allowedView === 'operations') {
-      this.adminConsole.open();
-    } else if (allowedView === 'academic') {
-      this.academicConsole.open(content, isSuperadmin);
-    } else if (allowedView === 'studio') {
-      this.siteStudio.open();
+    } else if (pageView === 'operations') {
+      this.openAdminConsole().catch((error) => this.reportWorkspaceModuleError(content, 'operations', 'Operasional organisasi', error));
+    } else if (pageView === 'academic') {
+      this.openAcademicConsole(content, isSuperadmin)
+        .catch((error) => this.reportWorkspaceModuleError(content, 'academic', 'Pusat Akademik', error));
+    } else if (pageView === 'learning') {
+      this.renderWorkspaceLearning(content, navigationEntry?.id || 'dashboard-lms');
+    } else if (pageView === 'support') {
+      this.renderWorkspaceSupport(content, navigationEntry?.id || 'dashboard-support');
+    } else if (pageView === 'meetings') {
+      this.renderWorkspaceMeetings(content);
+    } else if (pageView === 'governance-documents') {
+      this.renderWorkspaceGovernanceDocuments(content);
+    } else if (pageView === 'voting') {
+      renderPollList(content, { canManage: hasWorkspaceCapability(user, 'voting.manage') });
+    } else if (pageView === 'student-demographics') {
+      this.renderStudentDemographicsDashboard(content);
+    } else if (pageView === 'position-access' && isSuperadmin) {
+      this.renderPositionAccessDashboard(content);
+    } else if (pageView === 'public-feature') {
+      this.openWorkspacePublicTab(navigationEntry.publicTab, navigationEntry.publicAnchor, {
+        route: allowedView,
+        content,
+        title
+      });
+    } else if (pageView === 'studio') {
+      this.loadSiteStudio().catch((error) => this.reportWorkspaceModuleError(content, 'studio', 'Site Studio', error));
+    } else {
+      const breadcrumb = navigationEntry?.path?.join(' / ')
+        || `${navigationEntry?.section || 'Layanan HMIF'} / ${navigationEntry?.label || 'Modul'}`;
+      content.innerHTML = `
+        <section class="workspace-module-placeholder" aria-labelledby="workspace-module-title">
+          <span class="section-tag cyan">${escapeHtml(breadcrumb)}</span>
+          <div class="workspace-module-placeholder-mark" aria-hidden="true">↗</div>
+          <h2 id="workspace-module-title">${escapeHtml(navigationEntry?.label || 'Modul')}</h2>
+          <p>Modul ini belum tersedia. Integrasi akan menambahkan halaman, layanan API, aturan akses, dan pengujian sebelum menu diaktifkan.</p>
+          <button type="button" class="btn-tactical primary" data-workspace-view="home">KEMBALI KE DASHBOARD</button>
+        </section>
+      `;
+      content.querySelector('[data-workspace-view="home"]')?.addEventListener('click', () => this.openWorkspace('home'));
     }
+  }
+
+  toggleWorkspaceSidebar() {
+    const workspace = document.getElementById('member-workspace');
+    if (!workspace) return;
+    workspace.dataset.sidebarCollapsed = String(workspace.dataset.sidebarCollapsed !== 'true');
+    this.syncWorkspaceSidebar(workspace);
+  }
+
+  syncWorkspaceSidebar(workspace) {
+    const sidebar = workspace.querySelector('.workspace-sidebar');
+    const toggle = workspace.querySelector('[data-workspace-sidebar-toggle]');
+    if (!sidebar || !toggle) return;
+    const collapsed = workspace.dataset.sidebarCollapsed === 'true';
+    sidebar.inert = collapsed;
+    sidebar.setAttribute('aria-hidden', String(collapsed));
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? 'Tampilkan navigasi' : 'Sembunyikan navigasi');
+    toggle.title = collapsed ? 'Tampilkan navigasi' : 'Sembunyikan navigasi';
+    toggle.querySelector('[data-sidebar-toggle-label]').textContent = collapsed ? 'BUKA MENU' : 'TUTUP MENU';
+  }
+
+  async renderWorkspaceLearning(content, viewId) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat katalog dan progres pembelajaran...</p>';
+    const [pathsResult, resourcesResult, enrollmentsResult] = await Promise.all([
+      this.api.getPublicAcademicLearningPaths(),
+      this.api.getPublicAcademicResources(),
+      this.api.getMyLearningEnrollments()
+    ]);
+    if (!content.isConnected || this.workspaceView !== 'learning') return;
+    const failedResult = [pathsResult, resourcesResult, enrollmentsResult].find((result) => !result.ok);
+    const paths = pathsResult.ok ? pathsResult.data.learning_paths : [];
+    const resources = resourcesResult.ok ? resourcesResult.data.resources : [];
+    const enrollments = enrollmentsResult.ok ? enrollmentsResult.data.enrollments : [];
+    content.innerHTML = renderLearningWorkspace({
+      viewId,
+      paths,
+      resources,
+      enrollments,
+      selectedPathId: this.selectedLearningPathId,
+      error: failedResult?.error || ''
+    });
+    bindLearningWorkspace(content, this.api, (nextView, pathId) => {
+      if (pathId !== undefined) this.selectedLearningPathId = pathId;
+      this.openWorkspace(nextView || viewId);
+    });
+    content.querySelectorAll('[data-workspace-view]').forEach((button) => {
+      button.addEventListener('click', () => this.openWorkspace(button.dataset.workspaceView));
+    });
+  }
+
+  async renderStudentDemographicsDashboard(content) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat statistik agregat mahasiswa...</p>';
+    const result = await this.api.getStudentDemographics();
+    if (!content.isConnected || this.workspaceView !== 'student-demographics') return;
+    if (!result.ok) {
+      content.innerHTML = `<p class="workspace-data-error" role="alert">${escapeHtml(result.error || 'Statistik mahasiswa belum dapat dimuat.')}</p>`;
+      return;
+    }
+    content.innerHTML = renderStudentDemographics(result.data);
+    bindStudentDemographicsExport(content, result.data);
+  }
+
+  async renderPositionAccessDashboard(content) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat mapping akses periode aktif...</p>';
+    const result = await this.api.getPositionAccess();
+    if (!content.isConnected || this.workspaceView !== 'position-access') return;
+    if (!result.ok) {
+      content.innerHTML = `<p class="workspace-data-error" role="alert">${escapeHtml(result.error || 'Mapping akses jabatan belum dapat dimuat.')}</p>`;
+      return;
+    }
+    content.innerHTML = renderPositionAccessWorkspace(result.data);
+    bindPositionAccessWorkspace(content, this.api, result.data, () => this.renderPositionAccessDashboard(content));
+  }
+
+  async renderWorkspaceSupport(content, viewId) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat antrean tiket bantuan...</p>';
+    const canManage = this.api.isSuperadmin || this.api.clearanceLevel >= 2;
+    if (!['support-table', 'support-cards', 'support-tickets-preview'].includes(viewId)) {
+      this.selectedSupportTicketId = '';
+    }
+    const ticketsResult = await this.api.getSupportTickets();
+    if (!content.isConnected || this.workspaceView !== 'support') return;
+    const detailResult = ticketsResult.ok && this.selectedSupportTicketId
+      ? await this.api.getSupportTicket(this.selectedSupportTicketId)
+      : null;
+    const reportResult = viewId === 'support-reports' && canManage
+      ? await this.api.getSupportReports()
+      : null;
+    if (!content.isConnected || this.workspaceView !== 'support') return;
+    const detail = detailResult?.ok ? detailResult.data : null;
+    content.innerHTML = renderSupportWorkspace({
+      viewId,
+      tickets: ticketsResult.ok ? ticketsResult.data.tickets : [],
+      detail,
+      canManage,
+      report: reportResult?.ok ? reportResult.data : undefined,
+      error: !ticketsResult.ok ? ticketsResult.error
+        : detailResult && !detailResult.ok ? detailResult.error
+          : reportResult && !reportResult.ok ? reportResult.error : ''
+    });
+    bindSupportWorkspace(content, this.api, {
+      canManage,
+      refresh: () => this.renderWorkspaceSupport(content, viewId),
+      openTicket: (id) => {
+        this.selectedSupportTicketId = id;
+        if (id && viewId === 'dashboard-support') this.openWorkspace('support-table');
+        else if (id) this.renderWorkspaceSupport(content, viewId);
+        else this.openWorkspace('support-table');
+      }
+    });
+    content.querySelectorAll('[data-workspace-view]').forEach((button) => {
+      button.addEventListener('click', () => this.openWorkspace(button.dataset.workspaceView));
+    });
+  }
+
+  async renderWorkspaceMeetings(content) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat jadwal rapat privat...</p>';
+    const user = this.api.currentUser;
+    const [meetingsResult, capabilitiesResult] = await Promise.all([
+      this.api.getMyMeetings(),
+      this.api.getMeetingCapabilities()
+    ]);
+    if (!content.isConnected || this.workspaceView !== 'meetings') return;
+    const meetings = meetingsResult.ok ? meetingsResult.data.meetings : [];
+    const selectedMeeting = meetingsResult.ok && this.selectedMeetingId
+      ? await this.api.getMeeting(this.selectedMeetingId)
+      : null;
+    if (!content.isConnected || this.workspaceView !== 'meetings') return;
+    const detail = selectedMeeting?.ok ? selectedMeeting.data.meeting : null;
+    if (selectedMeeting && !selectedMeeting.ok && selectedMeeting.status !== 404) {
+      this.reportWorkspaceModuleError(content, 'meetings', 'Rapat HMIF', new Error(selectedMeeting.error));
+      return;
+    }
+    if (selectedMeeting && !detail) this.selectedMeetingId = '';
+    const canOrganize = this.api.isSuperadmin || user.permissions?.includes('meeting_organize')
+      || user.position_capabilities?.includes('meeting_organize');
+    content.innerHTML = renderMeetingWorkspace({
+      meetings,
+      selectedMeeting: detail,
+      user,
+      canOrganize,
+      conferencingCapabilities: capabilitiesResult.ok ? capabilitiesResult.data : {
+        videoEnabled: false,
+        recordingEnabled: false,
+        recordingDisabledReason: 'unavailable',
+        googleMeetEnabled: false
+      },
+      error: meetingsResult.ok ? '' : meetingsResult.error
+    });
+    bindMeetingWorkspace(content, this.api, {
+      user: { ...user, selectedMeetingId: this.selectedMeetingId },
+      refresh: () => this.renderWorkspaceMeetings(content),
+      selectMeeting: (id) => {
+        this.selectedMeetingId = id;
+        this.renderWorkspaceMeetings(content);
+      }
+    });
+  }
+
+  async renderWorkspaceGovernanceDocuments(content) {
+    content.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat naskah dan draf MUBES...</p>';
+    const result = await this.api.getGovernanceDocuments();
+    if (!content.isConnected || this.workspaceView !== 'governance-documents') return;
+    if (!result.ok) {
+      this.reportWorkspaceModuleError(content, 'governance-documents', 'Amandemen AD/ART/GBHO', new Error(result.error));
+      return;
+    }
+    content.innerHTML = renderGovernanceDocumentsWorkspace(result.data);
+    bindGovernanceDocumentsWorkspace(content, this.api, result.data, () => this.renderWorkspaceGovernanceDocuments(content));
+  }
+
+  openWorkspacePublicTab(tab, anchor, { route, content, title } = {}) {
+    const section = document.getElementById(`section-${tab}`);
+    if (!section || !content || !title) {
+      if (content) {
+        content.innerHTML = '<p class="workspace-data-error" role="alert">Fitur ini belum dapat dibuka di dalam dashboard anggota.</p>';
+      }
+      return;
+    }
+
+    this.switchTab(tab, { replace: true, focus: false, scroll: false });
+    const tutoringClinic = section.querySelector('.tutoring-clinic');
+    const displayedSection = route === 'tutoring' && tutoringClinic ? tutoringClinic : section;
+    const excludedSection = route === 'knowledge' ? tutoringClinic : null;
+    const excludedSectionWasHidden = excludedSection?.hidden;
+    if (excludedSection) excludedSection.hidden = true;
+    this.workspacePublicFeatureOrigin = {
+      section: displayedSection,
+      parent: displayedSection.parentNode,
+      nextSibling: displayedSection.nextSibling,
+      hiddenElement: excludedSection,
+      hidden: excludedSectionWasHidden
+    };
+    displayedSection.classList.add('workspace-public-feature');
+    content.replaceChildren(displayedSection);
+    window.history.replaceState({ workspaceView: route }, '', `#workspace/${route}`);
+    document.title = `${title.textContent} // HMIF UMB`;
+    if (anchor) {
+      requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start'
+      }));
+    }
+  }
+
+  restoreWorkspacePublicFeature() {
+    const origin = this.workspacePublicFeatureOrigin;
+    if (!origin) return;
+    const { section, parent, nextSibling, hiddenElement, hidden } = origin;
+    section.classList.remove('workspace-public-feature');
+    if (nextSibling?.parentNode === parent) parent.insertBefore(section, nextSibling);
+    else parent.append(section);
+    if (hiddenElement) hiddenElement.hidden = hidden;
+    this.workspacePublicFeatureOrigin = null;
   }
 
   renderAttendanceCheckIn(content) {
     content.insertAdjacentHTML('beforeend', `
-      <section class="workspace-section attendance-member-checkin" aria-labelledby="attendance-member-title">
+      <section class="workspace-section attendance-member-checkin" data-workspace-anchor="attendance" aria-labelledby="attendance-member-title">
         <div class="workspace-panel-heading">
           <div><span class="section-tag cyan">PRESENSI EVENT // GPS</span><h2 id="attendance-member-title">Check-in anggota</h2></div>
         </div>
@@ -833,6 +1576,7 @@ class PRTSApplication {
   async renderMyEventTickets(content) {
     const section = document.createElement('section');
     section.className = 'workspace-section member-event-tickets';
+    section.dataset.workspaceAnchor = 'tickets';
     section.setAttribute('aria-labelledby', 'member-event-tickets-title');
     section.innerHTML = `
       <div class="workspace-panel-heading"><div><span class="section-tag gold">EVENT // E-TICKET</span><h2 id="member-event-tickets-title">Tiket event saya</h2></div></div>
@@ -842,7 +1586,7 @@ class PRTSApplication {
     const feedback = section.querySelector('[data-member-ticket-feedback]');
     const list = section.querySelector('.member-event-ticket-list');
     const result = await this.api.getMyEventTickets();
-    if (!content.isConnected || this.workspaceView !== 'home') return;
+    if (!content.isConnected || !['home', 'attendance', 'tickets', 'delegations', 'attendance-tickets'].includes(this.workspaceView)) return;
     if (!result.ok || !Array.isArray(result.data?.tickets)) {
       feedback.textContent = result.error || 'Tiket event belum dapat dimuat.';
       return;
@@ -853,7 +1597,7 @@ class PRTSApplication {
       let qrImage = '';
       if (!ticket.checked_in_at && ticket.token) {
         try {
-          qrImage = await QRCode.toDataURL(JSON.stringify({ type: 'hmif-event-ticket', id: ticket.id, token: ticket.token }), {
+          qrImage = await createQrDataUrl(JSON.stringify({ type: 'hmif-event-ticket', id: ticket.id, token: ticket.token }), {
             errorCorrectionLevel: 'M', margin: 1, width: 220
           });
         } catch {
@@ -876,6 +1620,7 @@ class PRTSApplication {
   async renderMyDelegations(content) {
     const section = document.createElement('section');
     section.className = 'workspace-section member-delegations';
+    section.dataset.workspaceAnchor = 'delegations';
     section.setAttribute('aria-labelledby', 'member-delegations-title');
     section.innerHTML = `
       <div class="workspace-panel-heading">
@@ -1038,7 +1783,7 @@ class PRTSApplication {
   }
 
   async openDelegationMandatPrint(del) {
-    const qrImage = await QRCode.toDataURL(window.location.origin + '/#doctrine', { errorCorrectionLevel: 'M', margin: 1, width: 140 });
+    const qrImage = await createQrDataUrl(window.location.origin + '/#doctrine', { errorCorrectionLevel: 'M', margin: 1, width: 140 });
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('Pop-up browser terblokir. Izinkan pop-up untuk mencetak Surat Tugas Resmi.');
@@ -1181,6 +1926,7 @@ class PRTSApplication {
           <label><input type="checkbox" name="task" /><span>Perubahan status tugas organisasi</span></label>
           <label><input type="checkbox" name="submission" /><span>Perubahan status pengajuan konten saya</span></label>
           <label><input type="checkbox" name="tutoring" /><span>Jadwal dan perubahan sesi Klinik Koding</span></label>
+          <label><input type="checkbox" name="meeting" /><span>Undangan dan pembaruan rapat HMIF</span></label>
           <label class="workspace-notification-select"><span>Ingatkan tenggat dalam jangka waktu</span>
             <select name="deadline_days" class="form-input">
               <option value="1">1 hari</option><option value="3">3 hari</option><option value="7">7 hari</option><option value="14">14 hari</option><option value="30">30 hari</option>
@@ -1213,6 +1959,7 @@ class PRTSApplication {
     form.elements.task.checked = preferences.task;
     form.elements.submission.checked = preferences.submission;
     form.elements.tutoring.checked = preferences.tutoring;
+    form.elements.meeting.checked = preferences.meeting;
     form.elements.deadline_days.value = String(preferences.deadline_days);
     form.elements.tutoring_reminder_hours.value = String(preferences.tutoring_reminder_hours);
     feedback.textContent = `${result.data.unread_count} belum dibaca`;
@@ -1257,8 +2004,7 @@ class PRTSApplication {
         }
       }
       if (button.dataset.notificationView === 'calendar') {
-        this.closeWorkspace();
-        this.switchTab('calendar');
+        this.openWorkspace('app-calendar');
       } else {
         this.openWorkspace(button.dataset.notificationView);
       }
@@ -1271,10 +2017,41 @@ class PRTSApplication {
         task: form.elements.task.checked,
         submission: form.elements.submission.checked,
         tutoring: form.elements.tutoring.checked,
+        meeting: form.elements.meeting.checked,
         deadline_days: Number(form.elements.deadline_days.value),
         tutoring_reminder_hours: Number(form.elements.tutoring_reminder_hours.value)
       });
       preferenceFeedback.textContent = update.ok ? 'Preferensi notifikasi tersimpan.' : update.error;
+    });
+  }
+
+  async loadMemberDashboard(content, user, roleName) {
+    const dashboard = content.querySelector('[data-member-dashboard]');
+    if (!dashboard) return;
+
+    const [notificationsResult, ticketsResult, enrollmentsResult, pathsResult, calendarResult] = await Promise.all([
+      this.api.getNotifications(),
+      this.api.getSupportTickets(),
+      this.api.getMyLearningEnrollments(),
+      this.api.getPublicAcademicLearningPaths(),
+      this.api.getCalendarEvents()
+    ]);
+    if (!content.isConnected || this.workspaceView !== 'home') return;
+
+    dashboard.innerHTML = renderMemberDashboard({
+      user,
+      roleName,
+      notificationsResult,
+      ticketsResult,
+      enrollmentsResult,
+      pathsResult,
+      calendarResult
+    });
+    dashboard.querySelectorAll('[data-workspace-view]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.dataset.learningPathId) this.selectedLearningPathId = button.dataset.learningPathId;
+        this.openWorkspace(button.dataset.workspaceView);
+      });
     });
   }
 
@@ -1478,6 +2255,7 @@ class PRTSApplication {
   }
 
   closeWorkspace() {
+    this.restoreWorkspacePublicFeature();
     const workspace = document.getElementById('member-workspace');
     const portal = document.querySelector('.app-content');
     if (workspace) workspace.hidden = true;
@@ -1728,6 +2506,15 @@ class PRTSApplication {
         <p class="auth-feedback" role="status" aria-live="polite"></p>
         <button class="btn-tactical primary" type="submit">SIMPAN PROFIL</button>
       </form>
+      <section id="account-custom-fields" class="admin-form" hidden>
+        <h3>KOLOM PROFIL TAMBAHAN</h3>
+        <p>Data pada kolom yang ditampilkan dapat dilihat pemegang capability statistik mahasiswa.</p>
+        <p data-account-custom-fields-status role="status" aria-live="polite">Memuat kolom profil...</p>
+        <form data-account-custom-fields-form hidden>
+          <div data-account-custom-fields-inputs></div>
+          <button class="btn-tactical primary" type="submit">SIMPAN DATA TAMBAHAN</button>
+        </form>
+      </section>
       <p>${escapeHtml(user.role_title)} // ${escapeHtml(user.division)} // CLEARANCE ${escapeHtml(user.clearance_level)}</p>
       <form id="password-change-form" class="admin-form">
         <label class="form-label" for="old-password">PASSWORD SAAT INI</label>
@@ -1803,6 +2590,37 @@ class PRTSApplication {
       this.renderAuthState();
       feedback.textContent = 'PROFIL BERHASIL DIPERBARUI.';
     });
+    const customFieldsSection = body.querySelector('#account-custom-fields');
+    const customFieldsStatus = body.querySelector('[data-account-custom-fields-status]');
+    const loadCustomFields = async () => {
+      const customFieldsResult = await this.api.getMyStudentDemographicFields();
+      if (!customFieldsResult.ok) {
+        customFieldsSection.hidden = false;
+        customFieldsStatus.textContent = `Kolom profil tambahan gagal dimuat: ${customFieldsResult.error}`;
+      } else if (customFieldsResult.data.fields.length) {
+        customFieldsSection.hidden = false;
+        customFieldsStatus.textContent = 'Perbarui nilai yang akan ditampilkan kepada pemegang capability statistik mahasiswa.';
+        const customFieldsForm = customFieldsSection.querySelector('[data-account-custom-fields-form]');
+        customFieldsForm.hidden = false;
+        customFieldsForm.querySelector('[data-account-custom-fields-inputs]').innerHTML = customFieldsResult.data.fields
+          .map((field) => renderCustomFieldInput(field, customFieldsResult.data.values[field.id], { prefix: 'profile-' }))
+          .join('');
+        customFieldsForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const submitButton = customFieldsForm.querySelector('[type="submit"]');
+          submitButton.disabled = true;
+          customFieldsStatus.textContent = 'Menyimpan data tambahan...';
+          const result = await this.api.updateMyStudentDemographicFields(collectCustomFieldValues(customFieldsForm));
+          submitButton.disabled = false;
+          customFieldsStatus.textContent = result.ok
+            ? 'Data tambahan berhasil diperbarui.'
+            : `Data tambahan gagal disimpan: ${result.error}`;
+        });
+      } else {
+        customFieldsSection.hidden = true;
+      }
+    };
+    loadCustomFields();
     body.querySelector('#password-change-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -1900,6 +2718,8 @@ class PRTSApplication {
   // ------------------------------------------------------------------------
   setupAudioAndNavigation() {
     this.setupSoundtrackPlayer();
+    this.setupAppearanceToggle();
+    this.setupSidebarSectionToggles();
     // Audio toggle button
     const soundToggle = document.getElementById('sound-toggle-btn');
     if (soundToggle) {
@@ -1985,8 +2805,54 @@ class PRTSApplication {
 
     if (!window.location.hash.startsWith('#workspace/')) {
       const route = this.readRouteFromHash();
-      this.switchTab(route.tabId, { departmentId: route.departmentId, divisionId: route.divisionId, replace: true, focus: false, scroll: false });
+      this.switchTab(route.tabId, { departmentId: route.departmentId, divisionId: route.divisionId, replace: true, focus: false, scroll: route.tabId !== 'dashboard' });
     }
+  }
+
+  setupSidebarSectionToggles() {
+    document.querySelectorAll('[data-sidebar-section]').forEach((section) => {
+      const key = `prts-sidebar-section-${section.dataset.sidebarSection}`;
+      try {
+        const savedState = localStorage.getItem(key);
+        if (savedState !== null) section.open = savedState === 'open';
+      } catch (error) {
+        console.warn('[PRTS NAVIGATION] Preferensi sidebar tidak dapat dibaca:', error);
+      }
+      section.addEventListener('toggle', () => {
+        try {
+          localStorage.setItem(key, section.open ? 'open' : 'closed');
+        } catch (error) {
+          console.warn('[PRTS NAVIGATION] Preferensi sidebar tidak dapat disimpan:', error);
+        }
+      });
+    });
+  }
+
+  setupAppearanceToggle() {
+    const buttons = document.querySelectorAll('[data-theme-toggle]');
+    const updateButtons = () => {
+      const nextAppearance = this.appearance === 'light' ? 'dark' : 'light';
+      const label = nextAppearance === 'light' ? 'TEMA TERANG' : 'TEMA GELAP';
+      const accessibleLabel = `Beralih ke tema ${nextAppearance === 'light' ? 'terang' : 'gelap'}`;
+      for (const button of buttons) {
+        button.innerHTML = `<span aria-hidden="true">${nextAppearance === 'light' ? '☼' : '☾'}</span><span class="theme-toggle-label">${label}</span>`;
+        button.setAttribute('aria-label', accessibleLabel);
+        button.title = accessibleLabel;
+      }
+    };
+    applyAppearancePalette(this.siteConfig?.theme, this.appearance);
+    updateButtons();
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      this.appearance = this.appearance === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('hmif-appearance', this.appearance);
+      } catch (error) {
+        console.warn('[HMIF APPEARANCE] Preferensi tema tidak dapat disimpan:', error);
+      }
+      applyAppearancePalette(this.siteConfig?.theme, this.appearance);
+      this.dustEngine?.setTheme(this.appearance, this.siteConfig?.theme?.motion, this.siteConfig?.theme?.dust);
+      updateButtons();
+    }));
   }
 
   async setupSoundtrackPlayer() {
@@ -2013,7 +2879,11 @@ class PRTSApplication {
 
     const result = await this.api.getSoundtracks();
     if (!result.ok) {
-      player.hidden = true;
+      player.hidden = false;
+      reopenButton.hidden = true;
+      status.textContent = 'Katalog soundtrack tidak dapat dimuat.';
+      status.setAttribute('role', 'alert');
+      [trackSelect, playButton, muteButton, volumeSlider].forEach((control) => { control.disabled = true; });
       console.error('[PRTS SOUNDTRACK] Katalog gagal dimuat:', result.error);
       return;
     }
@@ -2045,11 +2915,19 @@ class PRTSApplication {
     const setTrackSource = () => {
       const track = currentTrack();
       if (!track) return false;
-      const source = new URL(track.url, window.location.origin);
-      if (audio.src !== source.href) audio.src = source.href;
-      setSoundtrackPreference('track', track.id);
-      status.textContent = track.title;
-      return true;
+      try {
+        const source = new URL(track.url, window.location.origin);
+        if (source.protocol !== 'https:' && source.origin !== window.location.origin) throw new Error('Gunakan sumber HTTPS.');
+        if (audio.src !== source.href) audio.src = source.href;
+        setSoundtrackPreference('track', track.id);
+        status.textContent = track.title;
+        status.setAttribute('role', 'status');
+        return true;
+      } catch (error) {
+        status.textContent = `Sumber audio tidak valid: ${error.message || 'periksa tautan track.'}`;
+        status.setAttribute('role', 'alert');
+        return false;
+      }
     };
     const setPlaybackState = () => {
       const playing = !audio.paused;
@@ -2065,6 +2943,8 @@ class PRTSApplication {
           await audio.play();
         } catch (error) {
           status.textContent = `Pemutaran gagal: ${error.message || 'sumber tidak dapat diakses.'}`;
+          status.setAttribute('role', 'alert');
+          setPlaybackState();
         }
       }
     });
@@ -2075,6 +2955,7 @@ class PRTSApplication {
           await audio.play();
         } catch (error) {
           status.textContent = `Pemutaran gagal: ${error.message || 'sumber tidak dapat diakses.'}`;
+          status.setAttribute('role', 'alert');
         }
       } else {
         audio.pause();
@@ -2093,8 +2974,10 @@ class PRTSApplication {
     });
     audio.addEventListener('play', setPlaybackState);
     audio.addEventListener('pause', setPlaybackState);
+    audio.addEventListener('ended', setPlaybackState);
     audio.addEventListener('error', () => {
       status.textContent = 'Audio gagal dimuat. Periksa tautan atau format track.';
+      status.setAttribute('role', 'alert');
       setPlaybackState();
     });
     setTrackSource();
@@ -2110,6 +2993,14 @@ class PRTSApplication {
     return { tabId, departmentId, divisionId };
   }
 
+  canAccessSection(section) {
+    if (!section?.hasAttribute('data-clearance-required')) return true;
+    const requiredClearance = Number(section.dataset.clearanceRequired);
+    return Number.isInteger(requiredClearance)
+      && requiredClearance >= 0
+      && (this.api.isSuperadmin || this.api.clearanceLevel >= requiredClearance);
+  }
+
   switchTab(tabId, { departmentId, divisionId = '', fromHistory = false, replace = false, focus = true, scroll = true, restoreOrganizationFocus = false } = {}) {
     let targetTabId = tabId;
     let targetSection = document.getElementById(`section-${targetTabId}`);
@@ -2120,12 +3011,13 @@ class PRTSApplication {
       departmentId = '';
       divisionId = '';
     }
-    if (!targetSection || targetSection.dataset.siteVisible === 'false') {
+    if (!targetSection || targetSection.dataset.siteVisible === 'false' || !this.canAccessSection(targetSection)) {
       targetTabId = 'dashboard';
       targetSection = document.getElementById('section-dashboard');
     }
     if (!targetSection || targetSection.dataset.siteVisible === 'false') {
-      targetSection = [...document.querySelectorAll('.main-content > section')].find((section) => section.dataset.siteVisible !== 'false');
+      targetSection = [...document.querySelectorAll('.main-content > section')]
+        .find((section) => section.dataset.siteVisible !== 'false' && this.canAccessSection(section));
       targetTabId = targetSection?.id.replace(/^section-/, '') || '';
     }
     if (!targetSection) return;
@@ -2152,10 +3044,20 @@ class PRTSApplication {
     }
 
     document.querySelectorAll('.main-content > section').forEach((section) => {
-      const isVisible = section === targetSection && section.dataset.siteVisible !== 'false';
+      const isDepartmentDetail = section.id === 'section-department';
+      const isVisible = section.dataset.siteVisible !== 'false'
+        && this.canAccessSection(section)
+        && (!isDepartmentDetail || section === targetSection);
       section.hidden = !isVisible;
       section.inert = !isVisible;
       section.setAttribute('aria-hidden', String(!isVisible));
+    });
+
+    document.querySelectorAll('.nav-link[data-tab]').forEach((link) => {
+      const section = document.getElementById(`section-${link.dataset.tab}`);
+      link.hidden = !section
+        || section.dataset.siteVisible === 'false'
+        || !this.canAccessSection(section);
     });
 
     // Update nav active state
@@ -2173,7 +3075,14 @@ class PRTSApplication {
     }
     if (targetTabId === 'department') this.renderDepartmentPage(this.selectedDepartmentId, this.selectedDivisionId);
     if (targetTabId === 'voting') {
-      renderPollList(document.getElementById('poll-list-container'));
+      renderPollList(document.getElementById('poll-list-container'), {
+        canManage: hasWorkspaceCapability(this.api.currentUser, 'voting.manage')
+      });
+    }
+    if (targetTabId === 'campus-map') this.campusMap.activate();
+    if (targetTabId === 'site-map') this.siteHierarchies.renderSiteNavigation();
+    if (targetTabId === 'doctrine') {
+      this.loadConstitutionData().catch((error) => this.reportConstitutionLoadError(error));
     }
     this.renderSidebarDepartments();
 
@@ -2187,7 +3096,9 @@ class PRTSApplication {
       targetSection.setAttribute('tabindex', '-1');
       targetSection.focus({ preventScroll: true });
     }
-    if (scroll) window.scrollTo({ top: 0, behavior: focus ? 'smooth' : 'auto' });
+    if (scroll) {
+      targetSection.scrollIntoView({ behavior: focus ? 'smooth' : 'auto', block: 'start' });
+    }
     if (scroll && targetTabId === 'squad' && this.selectedDepartmentId && this.selectedDepartmentId !== 'bph') {
       requestAnimationFrame(() => {
         const selectedNode = [...document.querySelectorAll('[data-dept-id]')]
@@ -3469,6 +4380,10 @@ class PRTSApplication {
           <span class="org-expand-indicator" aria-hidden="true">⌄</span>
         </summary>
         <div class="org-department-content">
+          <button class="org-department-detail-action" type="button" data-org-department-detail="${escapeHtml(dept.id)}">
+            <span>LIHAT DETAIL DEPARTEMEN</span>
+            <span aria-hidden="true">→</span>
+          </button>
           <div class="org-division-branches">${divisionNodes || '<p class="dept-empty-notice">Belum ada divisi dalam departemen ini.</p>'}</div>
         </div>
       </details>
@@ -3589,17 +4504,38 @@ class PRTSApplication {
       }
     }
 
-    container.innerHTML = html;
+    const formalStructureHtml = normFilter === 'all'
+      ? renderOrganizationStructure(HMIF_DATA.organizationStructure)
+      : '';
+    container.innerHTML = `${formalStructureHtml}${html}`;
 
     container.querySelectorAll('.operator-card').forEach((card) => this.bindOperatorCard(card));
-    container.querySelectorAll('[data-org-select]').forEach((node) => {
+    container.querySelectorAll('[data-org-select="bph"]').forEach((node) => {
       node.addEventListener('click', () => {
-        const type = node.dataset.orgSelect;
-        const departmentId = type === 'bph' ? 'bph' : node.dataset.deptId;
-        const divisionId = type === 'division' ? node.dataset.divisionId : '';
-        if (type === 'bph') this.switchTab('squad', { departmentId, focus: false, scroll: false, restoreOrganizationFocus: true });
-        else this.switchTab('department', { departmentId, divisionId, focus: false, scroll: false });
+        this.switchTab('squad', { departmentId: 'bph', focus: false, scroll: false, restoreOrganizationFocus: true });
       });
+    });
+    container.querySelectorAll('[data-org-select="division"]').forEach((node) => {
+      node.addEventListener('click', () => {
+        const expandedDepartmentIds = new Set(
+          [...container.querySelectorAll('.org-department[open]')].map((department) => department.dataset.deptId)
+        );
+        this.switchTab('squad', {
+          departmentId: node.dataset.deptId,
+          divisionId: node.dataset.divisionId,
+          focus: false,
+          scroll: false
+        });
+        container.querySelectorAll('.org-department').forEach((department) => {
+          if (expandedDepartmentIds.has(department.dataset.deptId)) department.open = true;
+        });
+      });
+    });
+    container.querySelectorAll('[data-org-department-detail]').forEach((button) => {
+      button.addEventListener('click', () => this.switchTab('department', {
+        departmentId: button.dataset.orgDepartmentDetail,
+        focus: false
+      }));
     });
     if (normFilter === 'all') this.renderOrganizationDetail(bphOps, sortedDepts);
   }
@@ -4050,6 +4986,7 @@ class PRTSApplication {
     };
 
     title.textContent = `DOSSIER KADER // BATALION ANGKATAN ${year}`;
+    const canManageCadets = hasWorkspaceCapability(this.api.currentUser, 'cadets.manage');
     content.innerHTML = `
       <div style="padding: 2rem; text-align: center; font-family: var(--font-mono);">
         <span class="status-dot"></span> Mengakses berkas dossier kader angkatan ${escapeHtml(year)}...
@@ -4193,6 +5130,7 @@ class PRTSApplication {
                     <th style="padding: 0.4rem;">NAMA MAHASISWA</th>
                     <th style="padding: 0.4rem;">TAHAP KADER</th>
                     <th style="padding: 0.4rem;">CLEARANCE</th>
+                    ${canManageCadets ? '<th style="padding: 0.4rem;">UBAH TAHAP</th>' : ''}
                   </tr>
                 </thead>
                 <tbody>
@@ -4200,8 +5138,12 @@ class PRTSApplication {
                     <tr style="border-bottom: 1px solid rgba(45, 62, 90, 0.2);">
                       <td style="padding: 0.4rem; color: var(--ak-cyan);">${escapeHtml(c.nim)}</td>
                       <td style="padding: 0.4rem; font-weight: bold; color: var(--ak-text-primary);">${escapeHtml(c.name)}</td>
-                      <td style="padding: 0.4rem; color: var(--ak-gold);">${escapeHtml(c.membership_stage || 'Kader')}</td>
+                      <td data-cadet-stage-label style="padding: 0.4rem; color: var(--ak-gold);">${escapeHtml(c.membership_stage || 'Kader')}</td>
                       <td style="padding: 0.4rem; color: var(--ak-text-secondary);">LVL ${escapeHtml(c.clearance_level ?? 1)}</td>
+                      ${canManageCadets ? `<td style="padding: 0.4rem;"><form data-cadet-stage-form data-cadet-nim="${escapeHtml(c.nim)}">
+                        <input name="stage" maxlength="120" value="${escapeHtml(c.membership_stage || 'Kader')}" aria-label="Tahap kaderisasi untuk ${escapeHtml(c.name)}" required />
+                        <button type="submit">SIMPAN</button><span data-cadet-stage-feedback role="status"></span>
+                      </form></td>` : ''}
                     </tr>
                   `).join('')}
                 </tbody>
@@ -4211,6 +5153,19 @@ class PRTSApplication {
         </div>
       </div>
     `;
+    content.querySelectorAll('[data-cadet-stage-form]').forEach((form) => {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        const feedback = form.querySelector('[data-cadet-stage-feedback]');
+        const stage = form.elements.stage.value.trim();
+        button.disabled = true;
+        const result = await this.api.promoteCadet(form.dataset.cadetNim, stage);
+        feedback.textContent = result.ok ? 'TERSIMPAN' : result.error;
+        if (result.ok) form.closest('tr').querySelector('[data-cadet-stage-label]').textContent = stage;
+        button.disabled = false;
+      });
+    });
   }
 
   // ------------------------------------------------------------------------
@@ -4469,7 +5424,7 @@ class PRTSApplication {
     let qrImage = '';
     let qrError = '';
     try {
-      qrImage = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 1, width: 240 });
+      qrImage = await createQrDataUrl(qrPayload, { errorCorrectionLevel: 'M', margin: 1, width: 240 });
     } catch (error) {
       qrError = error instanceof Error ? error.message : 'Kesalahan tidak diketahui';
     }
@@ -4499,7 +5454,7 @@ class PRTSApplication {
       return;
     }
     const certificate = result.data.certificate;
-    const qrImage = await QRCode.toDataURL(window.location.href, { errorCorrectionLevel: 'M', margin: 1, width: 180 });
+    const qrImage = await createQrDataUrl(window.location.href, { errorCorrectionLevel: 'M', margin: 1, width: 180 });
     document.body.innerHTML = `
       <main class="certificate-page">
         <article class="certificate-sheet">
@@ -4523,15 +5478,41 @@ class PRTSApplication {
   // ------------------------------------------------------------------------
   // DOCTRINE: AD/ART, GBHO & CADET APTITUDE QUIZ
   // ------------------------------------------------------------------------
-  renderDoctrine() {
+  renderDoctrine(constitutionArticles = this.constitutionArticles) {
     const accordion = document.getElementById('adart-accordion-container');
     if (!accordion) return;
 
-    const constList = Array.isArray(FULL_CONSTITUTION_DATA) && FULL_CONSTITUTION_DATA.length > 0 ? FULL_CONSTITUTION_DATA : HMIF_DATA.doctrine.adArt;
-    accordion.innerHTML = `
+    if (!Array.isArray(constitutionArticles) || constitutionArticles.length === 0) {
+      accordion.innerHTML = '<p class="workspace-feature-loading" role="status">Naskah AD/ART akan dimuat saat halaman dibuka.</p>';
+    } else {
+      const constList = constitutionArticles;
+      const metadata = this.constitutionMetadata;
+      const chapterCount = constList.length;
+      const articleCount = constList.reduce((total, chapter) => total + chapter.pasalList.length, 0);
+      const adArticleCount = constList
+        .filter((chapter) => chapter.bab.includes('(AD)'))
+        .reduce((total, chapter) => total + chapter.pasalList.length, 0);
+      const artArticleCount = articleCount - adArticleCount;
+      accordion.innerHTML = `
+      <section class="constitution-source-card" aria-label="Identitas naskah resmi">
+        <div>
+          <span class="constitution-source-status">${escapeHtml(metadata?.status || 'Dokumen organisasi')}</span>
+          <h3>${escapeHtml(metadata?.title || 'AD/ART dan GBHO HMIF UMB')}</h3>
+          ${this.constitutionLoadNotice ? `<p class="constitution-source-note" role="status">${escapeHtml(this.constitutionLoadNotice)}</p>` : ''}
+          <p>Tahun pemberlakuan menurut naskah: ${escapeHtml(String(metadata?.ratifiedYear || 'Belum tercatat'))}.</p>
+          ${metadata?.ratifiedAt
+          ? `<p>Tanggal pengesahan: ${escapeHtml(metadata.ratifiedAt)}.</p>`
+          : '<p class="constitution-source-note">Tanggal pengesahan lengkap belum tercatat pada portal; tenggat transisi Pasal 60 belum dihitung.</p>'}
+        </div>
+        ${metadata?.sourceUrl
+          ? `<a class="btn-tactical btn-small" href="${escapeHtml(metadata.sourceUrl)}" target="_blank" rel="noopener">BUKA PDF RESMI</a>`
+          : metadata?.archivedSourceUrl
+            ? `<a class="btn-tactical btn-small" href="${escapeHtml(metadata.archivedSourceUrl)}" target="_blank" rel="noopener">BUKA PDF ARSIP</a>`
+            : ''}
+      </section>
       <div style="margin-bottom: 1.25rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-        <input type="text" id="constitution-search-input" placeholder="Cari pasal atau kata kunci (misal: Delegasi, KTA, DPA, MABIM, Anggaran, Sanksi)..." style="flex: 1; min-width: 260px; background: rgba(0,0,0,0.5); border: 1px solid var(--ak-cyan); color: #fff; padding: 0.65rem 1rem; font-family: var(--font-mono); font-size: 0.85rem;" />
-        <span class="badge" style="background: rgba(0, 217, 255, 0.15); color: var(--ak-cyan); border: 1px solid var(--ak-cyan); padding: 0.5rem 0.8rem; font-family: var(--font-mono); font-size: 0.75rem;">94 PASAL LENGKAP (33 AD + 61 ART)</span>
+        <input class="form-input constitution-search-input" type="text" id="constitution-search-input" placeholder="Cari pasal atau kata kunci (misal: Delegasi, KTA, DPA, MABIM, Anggaran, Sanksi)..." style="flex: 1; min-width: 260px; border-color: var(--ak-cyan); font-family: var(--font-mono); font-size: 0.85rem;" />
+        <span class="badge" style="background: rgba(0, 217, 255, 0.15); color: var(--ak-cyan); border: 1px solid var(--ak-cyan); padding: 0.5rem 0.8rem; font-family: var(--font-mono); font-size: 0.75rem;">${articleCount} PASAL (${adArticleCount} AD + ${artArticleCount} ART) · ${chapterCount} BAB</span>
       </div>
       <div class="constitution-quick-filters" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
         <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--ak-text-dim); margin-right: 0.25rem;">NAVIGASI CEPAT:</span>
@@ -4548,7 +5529,7 @@ class PRTSApplication {
       </div>
       <div id="constitution-articles-list">
         ${constList
-        .map((item, idx) => `
+          .map((item, idx) => `
             <div class="doc-accordion-item ${idx === 0 ? 'open' : ''}" id="doc-item-${idx}">
               <div class="doc-accordion-header" onclick="window.prtsApp.toggleAccordion(${idx})">
                 <div class="doc-title-left">
@@ -4559,69 +5540,72 @@ class PRTSApplication {
               </div>
               <div class="doc-accordion-body">
                 ${item.pasalList
-            .map(
-              (p) => `
+              .map((sourceArticle) => {
+                const normalizedArticle = sourceArticle.contentDocument
+                  ? sourceArticle
+                  : { ...sourceArticle, ...parseLegacyGovernanceArticle(sourceArticle) };
+                return `
                       <div class="pasal-block">
-                        <div class="pasal-title">${escapeHtml(p.pasal)}</div>
-                        <div class="pasal-content" style="line-height: 1.6; white-space: pre-line;">${escapeHtml(p.content)}</div>
+                        <div class="pasal-title">${escapeHtml(normalizedArticle.pasal)}${normalizedArticle.heading ? ` · ${escapeHtml(normalizedArticle.heading)}` : ''}</div>
+                        <div class="pasal-content">${renderGovernanceContentHtml(normalizedArticle.contentDocument)}</div>
                       </div>
-                    `
-            )
-            .join('')}
+                    `;
+              }).join('')}
               </div>
             </div>
           `)
-        .join('')}
+          .join('')}
       </div>`;
 
-    const searchInput = document.getElementById('constitution-search-input');
-    const filterButtons = document.querySelectorAll('[data-const-filter]');
-    let activeFilter = 'ALL';
+      const searchInput = document.getElementById('constitution-search-input');
+      const filterButtons = document.querySelectorAll('[data-const-filter]');
+      let activeFilter = 'ALL';
 
-    const applyConstitutionFilters = () => {
-      const query = (searchInput?.value || '').toLowerCase().trim();
-      const items = document.querySelectorAll('.doc-accordion-item');
-      items.forEach((item) => {
-        const text = item.textContent.toLowerCase();
-        const babTag = item.querySelector('.doc-bab-tag')?.textContent || '';
+      const applyConstitutionFilters = () => {
+        const query = (searchInput?.value || '').toLowerCase().trim();
+        const items = document.querySelectorAll('.doc-accordion-item');
+        items.forEach((item) => {
+          const text = item.textContent.toLowerCase();
+          const babTag = item.querySelector('.doc-bab-tag')?.textContent || '';
 
-        let matchesCategory = true;
-        if (activeFilter === 'AD') matchesCategory = babTag.includes('(AD)');
-        else if (activeFilter === 'ART') matchesCategory = babTag.includes('(ART)');
-        else if (activeFilter === 'KEANGGOTAAN') matchesCategory = text.includes('anggota') || text.includes('kader') || text.includes('mabim');
-        else if (activeFilter === 'KEUANGAN') matchesCategory = text.includes('keuangan') || text.includes('harta') || text.includes('anggaran') || text.includes('kas');
-        else if (activeFilter === 'DELEGASI') matchesCategory = text.includes('delegasi') || text.includes('sanksi') || text.includes('disiplin') || text.includes('dpa');
+          let matchesCategory = true;
+          if (activeFilter === 'AD') matchesCategory = babTag.includes('(AD)');
+          else if (activeFilter === 'ART') matchesCategory = babTag.includes('(ART)');
+          else if (activeFilter === 'KEANGGOTAAN') matchesCategory = text.includes('anggota') || text.includes('kader') || text.includes('mabim');
+          else if (activeFilter === 'KEUANGAN') matchesCategory = text.includes('keuangan') || text.includes('harta') || text.includes('anggaran') || text.includes('kas');
+          else if (activeFilter === 'DELEGASI') matchesCategory = text.includes('delegasi') || text.includes('sanksi') || text.includes('disiplin') || text.includes('dpa');
 
-        const matchesQuery = !query || text.includes(query);
-        if (matchesCategory && matchesQuery) {
-          item.style.display = 'block';
-          if (query) item.classList.add('open');
-        } else {
-          item.style.display = 'none';
-        }
+          const matchesQuery = !query || text.includes(query);
+          if (matchesCategory && matchesQuery) {
+            item.style.display = 'block';
+            if (query) item.classList.add('open');
+          } else {
+            item.style.display = 'none';
+          }
+        });
+      };
+
+      if (searchInput) {
+        searchInput.addEventListener('input', applyConstitutionFilters);
+      }
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          filterButtons.forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeFilter = btn.dataset.constFilter;
+          applyConstitutionFilters();
+        });
       });
-    };
 
-    if (searchInput) {
-      searchInput.addEventListener('input', applyConstitutionFilters);
+      document.getElementById('btn-const-expand-all')?.addEventListener('click', () => {
+        document.querySelectorAll('.doc-accordion-item').forEach((item) => item.classList.add('open'));
+      });
+
+      document.getElementById('btn-const-collapse-all')?.addEventListener('click', () => {
+        document.querySelectorAll('.doc-accordion-item').forEach((item) => item.classList.remove('open'));
+      });
     }
-
-    filterButtons.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        filterButtons.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeFilter = btn.dataset.constFilter;
-        applyConstitutionFilters();
-      });
-    });
-
-    document.getElementById('btn-const-expand-all')?.addEventListener('click', () => {
-      document.querySelectorAll('.doc-accordion-item').forEach((item) => item.classList.add('open'));
-    });
-
-    document.getElementById('btn-const-collapse-all')?.addEventListener('click', () => {
-      document.querySelectorAll('.doc-accordion-item').forEach((item) => item.classList.remove('open'));
-    });
 
     // Roadmap Kaderisasi
     const roadmapContainer = document.getElementById('cadet-roadmap-container');
@@ -4870,7 +5854,7 @@ class PRTSApplication {
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:1rem; gap:0.5rem;">
         <div>
           <span class="badge" style="background:rgba(0, 229, 255, 0.15); color:var(--ak-cyan); border:1px solid var(--ak-cyan); font-family:var(--font-mono); font-size:0.75rem;">PASAL 41 ART // TRANSPARANSI LEGISLATIF</span>
-          <h3 style="margin:0.35rem 0 0 0; font-size:1.1rem; color:#fff;">PAPAN AGENDA RDP (RAPAT DENGAR PENDAPAT DPA)</h3>
+          <h3 style="margin:0.35rem 0 0 0; font-size:1.1rem; color:var(--ak-text-primary);">PAPAN AGENDA RDP (RAPAT DENGAR PENDAPAT DPA)</h3>
         </div>
         <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--ak-text-dim);">DPA HMIF UMB</span>
       </div>
@@ -4887,7 +5871,7 @@ class PRTSApplication {
       const res = await this.api.getPublicRdpAgendas();
       if (!res.ok || !Array.isArray(res.data) || !res.data.length) {
         cardsContainer.innerHTML = `
-          <div style="background:rgba(14, 20, 31, 0.5); border:1px dashed var(--ak-border); padding:1rem; font-family:var(--font-mono); font-size:0.82rem; color:var(--ak-text-dim);">
+          <div style="background:var(--ak-bg-panel); border:1px dashed var(--ak-border); padding:1rem; font-family:var(--font-mono); font-size:0.82rem; color:var(--ak-text-secondary);">
             Saat ini belum ada sidang RDP DPA yang dijadwalkan. Seluruh aspirasi baru sedang dalam tahap verifikasi tim BPH.
           </div>
         `;
@@ -5024,7 +6008,6 @@ class PRTSApplication {
   }
 
   closeModal() {
-    void this.siteStudio.cancelPreview();
     const backdrop = document.getElementById('prts-modal-backdrop');
     if (backdrop) {
       backdrop.classList.remove('active');
@@ -5112,14 +6095,18 @@ class PRTSApplication {
     const eVotingRefreshBtn = document.getElementById('eVoting-refresh-btn');
     if (eVotingRefreshBtn) {
       eVotingRefreshBtn.addEventListener('click', () => {
-        renderPollList(document.getElementById('poll-list-container'));
+        renderPollList(document.getElementById('poll-list-container'), {
+          canManage: hasWorkspaceCapability(this.api.currentUser, 'voting.manage')
+        });
       });
     }
 
     // Initial render if landing on voting tab
     const initialTab = window.location.hash.slice(1).split('?')[0];
     if (initialTab === 'voting') {
-      renderPollList(document.getElementById('poll-list-container'));
+      renderPollList(document.getElementById('poll-list-container'), {
+        canManage: hasWorkspaceCapability(this.api.currentUser, 'voting.manage')
+      });
     }
 
     // Proker filter buttons
@@ -5217,5 +6204,6 @@ class PRTSApplication {
 
 // Instantiate and expose globally
 window.addEventListener('DOMContentLoaded', () => {
+  initEmergencyNotice();
   window.prtsApp = new PRTSApplication();
 });

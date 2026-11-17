@@ -1,0 +1,177 @@
+.site-navigation-map,
+.university-organization-content {
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--card-bg) 82%, transparent);
+}
+
+.site-navigation-tree,
+.site-navigation-children,
+.university-org-tree,
+.university-org-children {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-navigation-tree {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+}
+
+.site-navigation-root {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--accent-color);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+}
+
+.site-navigation-root h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+}
+
+.site-navigation-category {
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--card-bg) 86%, transparent);
+}
+
+.site-navigation-category > details > summary {
+  padding: 0.9rem 1rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.site-navigation-category > details > summary:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.site-navigation-category > details > .site-navigation-children {
+  margin: 0 1rem 1rem;
+}
+
+.site-navigation-children,
+.university-org-children {
+  margin: 0.75rem 0 0 1.15rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--border-color);
+}
+
+.site-navigation-node {
+  min-width: 0;
+}
+
+.site-navigation-link {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-color);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  color: var(--text-primary);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.site-navigation-link:hover,
+.site-navigation-link:focus-visible {
+  border-color: var(--accent-color);
+  transform: translateX(2px);
+}
+
+.site-hierarchy-empty {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+}
+
+.site-university-period-filter {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 32rem;
+  margin-bottom: 1rem;
+}
+
+.site-university-period-filter > span,
+.site-university-period-status {
+  color: var(--accent-color);
+  font: 700 0.78rem var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.site-university-period-status,
+.site-hierarchy-source {
+  margin: 0 0 1rem;
+}
+
+.site-hierarchy-source {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.university-org-tree {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  align-items: start;
+}
+
+.university-org-children {
+  grid-column: 1 / -1;
+}
+
+.university-org-node {
+  min-width: 0;
+}
+
+.university-org-card {
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--accent-color);
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+}
+
+.university-org-node--rectorate > .university-org-card {
+  border-top-color: var(--accent-alt-color, var(--accent-color));
+}
+
+.university-org-kind {
+  color: var(--text-secondary);
+  font: 700 0.7rem var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.university-org-card h3 {
+  margin: 0.45rem 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.university-org-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .site-navigation-map,
+  .university-organization-content {
+    padding: 0.8rem;
+  }
+
+  .site-navigation-children,
+  .university-org-children {
+    margin-left: 0.55rem;
+    padding-left: 0.55rem;
+  }
+}

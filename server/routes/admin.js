@@ -17,10 +17,11 @@ import {
   validateProjectCallApplication,
   validateTechArticle
 } from '../portfolioFeatures.js';
+import { POSITION_CAPABILITY_IDS } from '../../shared/positionAccess.js';
 
 export function registerAdminRoutes(app, ctx) {
   const {
-    db, requireAuth, requireClearance, requireSuperadmin, auditAdminMutation,
+    db, requireAuth, requireClearance, requireSuperadmin, requireCapability, auditAdminMutation,
     createUserNotification, githubStatsLimiter, githubStatsCache, GITHUB_STATS_CACHE_MS,
     validateOrganizationTask, validatePortalRecord, validatePortalConsent,
     normalizePortalUrl, requirePortfolioReviewer, isPortfolioReviewer,
@@ -566,7 +567,7 @@ export function registerAdminRoutes(app, ctx) {
     res.json(db.getAllCadets());
   });
 
-  app.put('/api/cadets/:nim/stage', requireClearance(3), (req, res) => {
+  app.put('/api/cadets/:nim/stage', requireCapability('cadets.manage'), (req, res) => {
     const { stage } = req.body;
     if (typeof stage !== 'string' || !stage.trim()) {
       return res.status(400).json({ error: 'Jenjang kaderisasi wajib diisi.' });
@@ -745,6 +746,42 @@ export function registerAdminRoutes(app, ctx) {
     res.status(201).json({ message: 'Akun anggota dibuat dengan clearance level 1.', user });
   });
 
+  app.put('/api/admin/users/bulk-access', requireSuperadmin, (req, res) => {
+    const {
+      account_ids: accountIds,
+      clearance_level: clearanceLevel,
+      capability_action: capabilityAction,
+      capabilities = []
+    } = req.body || {};
+    if (!Array.isArray(accountIds) || accountIds.length < 1 || accountIds.length > 500
+      || accountIds.some((accountId) => typeof accountId !== 'string' || !accountId || accountId.length > 80)
+      || new Set(accountIds).size !== accountIds.length) {
+      return res.status(400).json({ error: 'Pilih antara 1 sampai 500 akun yang valid dan berbeda.' });
+    }
+    if (clearanceLevel !== undefined && (!Number.isInteger(clearanceLevel) || clearanceLevel < 1 || clearanceLevel > 3)) {
+      return res.status(400).json({ error: 'Clearance anggota harus berupa level 1, 2, atau 3.' });
+    }
+    if (!Array.isArray(capabilities) || capabilities.some((capability) => !POSITION_CAPABILITY_IDS.has(capability))
+      || (capabilities.length > 0 && !['grant', 'revoke'].includes(capabilityAction))) {
+      return res.status(400).json({ error: 'Daftar capability atau tindakan tidak valid.' });
+    }
+    if (clearanceLevel === undefined && capabilities.length === 0) {
+      return res.status(400).json({ error: 'Pilih perubahan clearance atau capability terlebih dahulu.' });
+    }
+
+    const result = db.bulkUpdateAccountAccess(accountIds, {
+      clearanceLevel,
+      capabilities,
+      capabilityAction
+    }, req.user);
+    if (result?.error) return res.status(400).json({ error: result.error });
+    if (!result) return res.status(500).json({ error: 'Perubahan akses massal tidak dapat disimpan.' });
+    res.json({
+      message: 'AKSES AKUN DIPERBARUI',
+      updated_count: result.updatedCount
+    });
+  });
+
   app.put('/api/admin/users/:nim', requireClearance(4), (req, res) => {
     const { clearance_level, role_title, division, membership_stage, code_name } = req.body;
     const target = db.findUserByNIM(req.params.nim);
@@ -773,6 +810,16 @@ export function registerAdminRoutes(app, ctx) {
     const user = db.setAcademicCuratorPermission(req.params.nim, req.body.enabled, req.user);
     if (!user) return res.status(500).json({ error: 'Izin kurator akademik tidak dapat diperbarui.' });
     res.json({ message: 'CAPABILITY KURATOR AKADEMIK DIPERBARUI', user });
+  });
+
+  app.put('/api/admin/users/:nim/meeting-organizer', requireSuperadmin, (req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'Status penyelenggara rapat harus boolean.' });
+    const target = db.findUserByNIM(req.params.nim);
+    if (!target) return res.status(404).json({ error: 'User tidak ditemukan.' });
+    if (target.role === 'superadmin') return res.status(400).json({ error: 'Superadmin tidak memerlukan capability penyelenggara rapat.' });
+    const user = db.setMeetingOrganizerPermission(req.params.nim, req.body.enabled, req.user);
+    if (!user) return res.status(500).json({ error: 'Capability penyelenggara rapat tidak dapat diperbarui.' });
+    res.json({ message: 'CAPABILITY PENYELENGGARA RAPAT DIPERBARUI', user });
   });
 
   app.put('/api/admin/users/:nim/role', requireSuperadmin, (req, res) => {

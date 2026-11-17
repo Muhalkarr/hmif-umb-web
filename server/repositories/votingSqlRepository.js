@@ -52,12 +52,17 @@ export const createVotingSqlRepository = ({ sqlite }) => {
     updatePoll(id, updates) {
       const existing = repo.getPoll(id);
       if (!existing) return null;
+      const status = updates.status ?? existing.status;
+      if (!['draft', 'active', 'closed'].includes(status)) throw new Error('Status pemilihan tidak valid.');
+      if (status === 'active' && existing.status !== 'active' && existing.candidates.length === 0) {
+        throw new Error('Tambahkan minimal satu kandidat sebelum mengaktifkan pemilihan.');
+      }
       const updated = {
         title: updates.title ?? existing.title,
         description: updates.description ?? existing.description,
         start_date: updates.start_date ?? existing.start_date,
         end_date: updates.end_date ?? existing.end_date,
-        status: updates.status ?? existing.status,
+        status,
         id
       };
       sqlite.prepare(`
@@ -87,6 +92,9 @@ export const createVotingSqlRepository = ({ sqlite }) => {
     },
 
     addCandidate(pollId, data) {
+      const poll = repo.getPoll(pollId);
+      if (!poll) throw new Error('Pemilihan tidak ditemukan.');
+      if (poll.status !== 'draft') throw new Error('Kandidat hanya dapat ditambahkan saat pemilihan masih draft.');
       const id = `cand-${randomUUID()}`;
       const now = new Date().toISOString();
       const candidate = {
@@ -107,6 +115,11 @@ export const createVotingSqlRepository = ({ sqlite }) => {
     },
 
     deleteCandidate(candidateId) {
+      const candidate = sqlite.prepare('SELECT poll_id FROM voting_candidates WHERE id = ?').get(candidateId);
+      if (!candidate) return false;
+      const poll = repo.getPoll(candidate.poll_id);
+      const hasVotes = sqlite.prepare('SELECT 1 FROM voting_votes WHERE candidate_id = ? LIMIT 1').get(candidateId);
+      if (poll?.status === 'active' || hasVotes) throw new Error('Kandidat tidak dapat dihapus setelah pemilihan aktif atau menerima suara.');
       sqlite.prepare('DELETE FROM voting_candidates WHERE id = ?').run(candidateId);
       return true;
     },
@@ -134,10 +147,17 @@ export const createVotingSqlRepository = ({ sqlite }) => {
 
       const voteId = `vote-${randomUUID()}`;
       const now = new Date().toISOString();
-      sqlite.prepare(`
-        INSERT INTO voting_votes (id, poll_id, voter_nim, candidate_id, voted_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(voteId, pollId, voterNim, candidateId, now);
+      try {
+        sqlite.prepare(`
+          INSERT INTO voting_votes (id, poll_id, voter_nim, candidate_id, voted_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(voteId, pollId, voterNim, candidateId, now);
+      } catch (error) {
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          throw new Error('Anda sudah memberikan suara (vote) pada pemilihan ini.');
+        }
+        throw error;
+      }
 
       return { vote_id: voteId, voted_at: now };
     },

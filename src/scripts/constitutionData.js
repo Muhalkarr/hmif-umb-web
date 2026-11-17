@@ -1,3 +1,12 @@
+export const CONSTITUTION_DOCUMENT_METADATA = Object.freeze({
+  title: 'Anggaran Dasar, Anggaran Rumah Tangga, dan Garis Besar Haluan Organisasi HMIF UMB',
+  status: 'Disahkan melalui MUBES',
+  ratifiedYear: 2026,
+  ratifiedAt: null,
+  sourceUrl: '/api/site/documents/constitution',
+  sourceSha256: '0CA22B69D7EAED1EB20C6EF6EE78FCA8CC879A00820EDE2EF2E31DC7979EF41D'
+});
+
 export const FULL_CONSTITUTION_DATA = [
   {
     "bab": "BAB I (AD)",

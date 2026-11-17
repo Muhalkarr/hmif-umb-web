@@ -1,4 +1,46 @@
-import { BUILTIN_SITE_IMAGES, configReferencesAsset, migrateLegacyBphRoleIds, resolveBackgroundImage, uploadedAssetFileUrl } from '../../server/siteSchema.js';
+import { BUILTIN_SITE_IMAGES, configReferencesAsset, DUST_PERCENT_MAX, migrateLegacyBphRoleIds, resolveBackgroundImage, uploadedAssetFileUrl, withSiteDefaults } from '../../server/siteSchema.js';
+import { createOrganizationDraftTemplate } from './organizationTemplates.js';
+import { POSITION_CAPABILITY_OPTIONS } from '../../shared/positionAccess.js';
+import { DEFAULT_STUDENT_DEMOGRAPHIC_SETTINGS, STUDENT_ACCOUNT_COLUMNS, STUDENT_CUSTOM_FIELD_TYPES } from '../../server/studentDemographics.js';
+import { collectCustomFieldValues, renderCustomFieldInput } from './studentDemographics.js';
+import {
+  collectCampusMapForm,
+  bindCampusMapPanel,
+  createBuildingDraft,
+  createCampusDraft,
+  createFloorDraft,
+  renderCampusMapPanel
+} from './siteStudioCampusMap.js';
+import {
+  bindUniversityOrganizationPanel,
+  collectUniversityOrganizationForm,
+  renderUniversityOrganizationPanel
+} from './siteStudioHierarchies.js';
+import {
+  createSiteMapGroupDraft,
+  moveSiteMapNode,
+  removeSiteMapGroup,
+  renderSiteMapEditor
+} from './siteStudioSiteMap.js';
+
+const FONT_OPTIONS = ['Inter', 'Rajdhani', 'Orbitron', 'BenderLight', 'Geometos', 'JetBrainsMono', 'system-ui'];
+const FONT_PREVIEW_SAMPLES = {
+  'font.body': 'Aa Bb Gg Rr 0123 — Contoh teks isi HMIF.',
+  'font.heading': 'HMIF // INOVASI DIGITAL 2026',
+  'font.mono': 'OPS-01 / STATUS: READY_123'
+};
+const SITE_COLOR_LABELS = {
+  background: 'Latar',
+  panel: 'Panel',
+  accent: 'Aksen utama',
+  accentAlt: 'Aksen kedua',
+  danger: 'Status bahaya',
+  success: 'Status sukses',
+  info: 'Status informasi',
+  text: 'Teks utama',
+  textMuted: 'Teks sekunder',
+  border: 'Garis'
+};
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -9,6 +51,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
 }[character]));
 
 const countOrganizationDivisions = (departments = []) => departments.reduce((total, department) => total + (department.divisions || []).length, 0);
+const createOrganizationId = (prefix) => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 
 const labels = {
   dashboard: 'Dashboard',
@@ -17,12 +60,17 @@ const labels = {
   showcase: 'Karya Mahasiswa',
   career: 'Alumni dan Karier',
   squad: 'Struktur Pengurus',
+  cohort: 'Batalion Angkatan',
   proker: 'Program Kerja',
+  voting: 'E-Voting',
   inventory: 'Inventaris',
   calendar: 'Kalender',
   doctrine: 'Dokumen Organisasi',
   intel: 'Berita',
-  commlink: 'Aspirasi dan Kontak'
+  commlink: 'Aspirasi dan Kontak',
+  'campus-map': 'Peta Kampus',
+  'site-map': 'Peta Navigasi Situs',
+  'university-organization': 'Struktur Universitas'
 };
 
 const luminance = (hex) => {
@@ -37,13 +85,29 @@ const contrastRatio = (first, second) => {
   return (values[0] + 0.05) / (values[1] + 0.05);
 };
 
+const getPaletteContrast = (colors) => {
+  const text = contrastRatio(colors.text, colors.background);
+  const secondary = contrastRatio(colors.textMuted, colors.background);
+  const accents = [colors.accent, colors.accentAlt, colors.danger, colors.success, colors.info]
+    .map((color) => contrastRatio(color, colors.background));
+  return {
+    text,
+    secondary,
+    accents,
+    pass: text >= 4.5 && secondary >= 4.5 && accents.every((ratio) => ratio >= 3)
+  };
+};
+
 export class SiteStudio {
-  constructor(api, { openModal, closeModal, getContainer, applyConfig }) {
+  constructor(api, { openModal, closeModal, getContainer, getTabContainer, applyConfig, showPreview, returnToStudio }) {
     this.api = api;
     this.openModal = openModal;
     this.closeModal = closeModal;
     this.getContainer = getContainer;
+    this.getTabContainer = getTabContainer;
     this.applyConfig = applyConfig;
+    this.showPreview = showPreview || (() => { });
+    this.returnToStudio = returnToStudio || (() => { });
     this.config = null;
     this.assets = [];
     this.soundtracks = [];
@@ -54,6 +118,19 @@ export class SiteStudio {
     this.revisions = [];
     this.audit = [];
     this.users = [];
+    this.usersError = '';
+    this.accessFeedback = '';
+    this.studentDemographicSettings = structuredClone(DEFAULT_STUDENT_DEMOGRAPHIC_SETTINGS);
+    this.studentDemographicSettingsError = '';
+    this.studentDemographicSettingsFeedback = '';
+    this.studentDemographicSettingsDirty = false;
+    this.studentDemographicValues = {};
+    this.studentDemographicValuesError = '';
+    this.studentDemographicValuesFeedback = '';
+    this.studentDemographicValuesDirty = false;
+    this.selectedDemographicAccountId = '';
+    this.securityNotice = { status: 'normal', message: '', updatedAt: '' };
+    this.securityNoticeError = '';
     this.revisionId = null;
     this.activeTab = 'theme';
     this.previewing = false;
@@ -65,6 +142,10 @@ export class SiteStudio {
     this.editingGenLeader = null;
     this.editingGenMember = null;
     this.editingKnowledgeResourceId = null;
+    this.selectedCampusMapFeatureId = '';
+    this.campusMapDrawKind = '';
+    this.campusMapDraftPoints = [];
+    this.fontPreviewLoads = new Map();
   }
 
   async open() {
@@ -77,7 +158,7 @@ export class SiteStudio {
     body.innerHTML = '<p class="auth-feedback" role="status">Memuat konfigurasi, aset, dan riwayat...</p>';
     if (!this.getContainer) this.openModal();
 
-    const [siteResult, assetsResult, revisionsResult, auditResult, usersResult, knowledgeFilesResult, soundtracksResult, projectsResult, alumniResult, jobsResult] = await Promise.all([
+    const [siteResult, assetsResult, revisionsResult, auditResult, usersResult, knowledgeFilesResult, soundtracksResult, projectsResult, alumniResult, jobsResult, demographicsSettingsResult, demographicsValuesResult, securityNoticeResult] = await Promise.all([
       this.api.getSiteConfig({ preview: true }),
       this.api.getSiteAssets(),
       this.api.getSiteRevisions(),
@@ -87,19 +168,45 @@ export class SiteStudio {
       this.api.getAdminSoundtracks(),
       this.api.getAdminPortalRecords('project'),
       this.api.getAdminPortalRecords('alumni'),
-      this.api.getAdminPortalRecords('job')
+      this.api.getAdminPortalRecords('job'),
+      this.api.getStudentDemographicSettings(),
+      this.api.getStudentDemographicCustomValues(),
+      this.api.getSecurityNotice()
     ]);
     if (!siteResult.ok) {
       body.innerHTML = `<p class="auth-feedback">${escapeHtml(siteResult.error)}</p>`;
       return;
     }
 
-    this.config = migrateLegacyBphRoleIds(structuredClone(siteResult.data.config));
+    this.config = migrateLegacyBphRoleIds(withSiteDefaults(structuredClone(siteResult.data.config)));
     this.revisionId = siteResult.data.revision_id;
     this.assets = assetsResult.ok ? assetsResult.data.assets : [];
     this.revisions = revisionsResult.ok ? revisionsResult.data.revisions : [];
     this.audit = auditResult.ok ? auditResult.data.entries : [];
     this.users = usersResult?.ok && Array.isArray(usersResult.data?.users) ? usersResult.data.users : [];
+    this.usersError = usersResult?.ok ? '' : usersResult?.error || 'Daftar akun tidak dapat dimuat.';
+    this.studentDemographicSettings = demographicsSettingsResult?.ok
+      ? demographicsSettingsResult.data.settings
+      : structuredClone(DEFAULT_STUDENT_DEMOGRAPHIC_SETTINGS);
+    this.studentDemographicSettingsError = demographicsSettingsResult?.ok
+      ? ''
+      : demographicsSettingsResult?.error || 'Pengaturan kolom statistik tidak dapat dimuat.';
+    this.studentDemographicSettingsDirty = false;
+    this.studentDemographicValues = demographicsValuesResult?.ok ? demographicsValuesResult.data.values || {} : {};
+    this.studentDemographicValuesError = demographicsValuesResult?.ok
+      ? ''
+      : demographicsValuesResult?.error || 'Nilai kolom kustom tidak dapat dimuat.';
+    this.studentDemographicValuesDirty = false;
+    this.securityNotice = securityNoticeResult?.ok
+      ? securityNoticeResult.data
+      : { status: 'normal', message: '', updatedAt: '' };
+    this.securityNoticeError = securityNoticeResult?.ok
+      ? ''
+      : securityNoticeResult?.error || 'Status pengumuman keamanan tidak dapat dimuat.';
+    const memberUsers = this.users.filter((user) => user.role !== 'superadmin');
+    if (!memberUsers.some(({ account_id }) => account_id === this.selectedDemographicAccountId)) {
+      this.selectedDemographicAccountId = memberUsers[0]?.account_id || '';
+    }
     this.knowledgeFiles = knowledgeFilesResult?.ok && Array.isArray(knowledgeFilesResult.data?.files) ? knowledgeFilesResult.data.files : [];
     this.soundtracks = soundtracksResult?.ok && Array.isArray(soundtracksResult.data?.tracks) ? soundtracksResult.data.tracks : [];
     this.soundtrackError = soundtracksResult?.ok ? '' : soundtracksResult?.error || 'Katalog soundtrack gagal dimuat.';
@@ -114,12 +221,28 @@ export class SiteStudio {
   }
 
   render(body) {
-    const fontOptions = ['Inter', 'Rajdhani', 'Orbitron', 'BenderLight', 'Geometos', 'JetBrainsMono', 'system-ui'];
     const fontSelect = (name, current) => `
-      <select class="form-select" name="${name}">
-        ${fontOptions.map((font) => `<option value="${font}" ${current === font ? 'selected' : ''}>${font}</option>`).join('')}
-        ${this.assets.filter((asset) => asset.kind === 'font').map((asset) => `<option value="asset:${asset.id}" ${current === `asset:${asset.id}` ? 'selected' : ''}>${escapeHtml(asset.original_name)}</option>`).join('')}
+      <select class="form-select studio-font-picker" name="${name}" style="font-size:${this.config.theme.typeScale}px">
+        ${FONT_OPTIONS.map((font) => `<option value="${font}" style="font-family:&quot;${font}&quot;,sans-serif;font-size:${this.config.theme.typeScale}px" ${current === font ? 'selected' : ''}>${font}</option>`).join('')}
+        ${this.assets.filter((asset) => asset.kind === 'font').map((asset) => `<option value="asset:${escapeHtml(asset.id)}" style="font-family:&quot;HMIFAsset-${escapeHtml(asset.id)}&quot;,sans-serif;font-size:${this.config.theme.typeScale}px" ${current === `asset:${asset.id}` ? 'selected' : ''}>${escapeHtml(asset.original_name)}</option>`).join('')}
       </select>`;
+    const paletteEditor = (mode, title, description, colors) => `
+      <fieldset class="studio-palette" data-palette="${mode}">
+        <legend>${title}</legend>
+        <p class="studio-help">${description}</p>
+        <div class="studio-palette-preview" data-palette-preview="${mode}">
+          <div class="studio-palette-sample" style="--sample-background:${escapeHtml(colors.background)};--sample-panel:${escapeHtml(colors.panel)};--sample-accent:${escapeHtml(colors.accent)};--sample-text:${escapeHtml(colors.text)};--sample-border:${escapeHtml(colors.border)}">
+            <span>PRTS // ${mode === 'dark' ? 'NIGHT' : 'DAY'} PROTOCOL</span>
+            <strong>Pratinjau komponen</strong>
+            <button type="button" disabled>AKSES PANEL</button>
+          </div>
+        </div>
+        <div class="studio-color-grid">
+          ${Object.entries(SITE_COLOR_LABELS).map(([key, label]) => `
+            <label class="studio-color-field"><span>${label}</span><input type="color" name="color.${mode}.${key}" value="${escapeHtml(colors[key])}" /><code>${escapeHtml(colors[key])}</code></label>
+          `).join('')}
+        </div>
+      </fieldset>`;
     const imageSelect = (name, current, builtins, { allowEmpty = false, emptyLabel = 'Tanpa gambar' } = {}) => {
       const uploaded = this.assets.filter((asset) => asset.kind === 'image').map((asset) => ({
         value: uploadedAssetFileUrl(asset.id),
@@ -150,14 +273,42 @@ export class SiteStudio {
     const currentLogo = this.config.content.data.identity.logo || '';
     const currentBackground = resolveBackgroundImage(this.config.theme.background);
     const currentHero = this.config.theme.heroImage || '';
+    const customPages = this.config.content.customPages || [];
+    const pagesById = new Map(this.config.pages.map((page) => [page.id, page]));
+    const customPagesByNavId = new Map(customPages.map((page, index) => [`custom-${page.id}`, { page, index }]));
+    const sidebarOrder = this.config.content.sidebarOrder
+      || [...this.config.pages.map(({ id }) => id), ...customPages.map(({ id }) => `custom-${id}`)];
+    const sidebarLabels = new Map([
+      ...this.config.pages.map((page) => [page.id, labels[page.id] || page.id]),
+      ...customPages.map((page) => [`custom-${page.id}`, page.title])
+    ]);
+    const siteMapNodes = this.config.content.siteMapNodes || [];
 
     body.innerHTML = `
+      <div class="site-studio">
+      <header class="studio-heading">
+        <div>
+          <span class="section-tag cyan">PRTS // CONTENT OPERATIONS</span>
+          <h2>Site Studio</h2>
+          <p>Kelola tampilan, halaman, dan data portal HMIF dari satu ruang kerja.</p>
+        </div>
+        <div class="studio-draft-state" data-studio-state role="status" aria-live="polite">
+          <span class="studio-state-indicator" aria-hidden="true"></span>
+          <span data-studio-state-label>DRAFT SIAP DIEDIT</span>
+        </div>
+      </header>
       <div class="studio-toolbar" role="tablist" aria-label="Site Studio">
-        <button id="studio-tab-theme" class="btn-tactical ${this.activeTab === 'theme' ? 'primary' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'theme'}" aria-controls="studio-panel-theme" tabindex="${this.activeTab === 'theme' ? '0' : '-1'}" data-studio-tab="theme">TEMA</button>
-        <button id="studio-tab-pages" class="btn-tactical ${this.activeTab === 'pages' ? 'primary' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'pages'}" aria-controls="studio-panel-pages" tabindex="${this.activeTab === 'pages' ? '0' : '-1'}" data-studio-tab="pages">HALAMAN & KONTEN</button>
-        <button id="studio-tab-departments" class="btn-tactical ${this.activeTab === 'departments' ? 'primary' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'departments'}" aria-controls="studio-panel-departments" tabindex="${this.activeTab === 'departments' ? '0' : '-1'}" data-studio-tab="departments">STRUKTUR & DEPARTEMEN</button>
-        <button id="studio-tab-collections" class="btn-tactical ${this.activeTab === 'collections' ? 'primary' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'collections'}" aria-controls="studio-panel-collections" tabindex="${this.activeTab === 'collections' ? '0' : '-1'}" data-studio-tab="collections">DATA ORGANISASI</button>
-        <button id="studio-tab-assets" class="btn-tactical ${this.activeTab === 'assets' ? 'primary' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'assets'}" aria-controls="studio-panel-assets" tabindex="${this.activeTab === 'assets' ? '0' : '-1'}" data-studio-tab="assets">ASET & VERSI</button>
+        <button id="studio-tab-theme" class="workspace-nav-link ${this.activeTab === 'theme' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'theme'}" aria-controls="studio-panel-theme" tabindex="${this.activeTab === 'theme' ? '0' : '-1'}" data-studio-tab="theme">Tema</button>
+        <button id="studio-tab-pages" class="workspace-nav-link ${this.activeTab === 'pages' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'pages'}" aria-controls="studio-panel-pages" tabindex="${this.activeTab === 'pages' ? '0' : '-1'}" data-studio-tab="pages">Halaman & Konten</button>
+        <button id="studio-tab-map" class="workspace-nav-link ${this.activeTab === 'map' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'map'}" aria-controls="studio-panel-map" tabindex="${this.activeTab === 'map' ? '0' : '-1'}" data-studio-tab="map">Peta Kampus</button>
+        <button id="studio-tab-departments" class="workspace-nav-link ${this.activeTab === 'departments' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'departments'}" aria-controls="studio-panel-departments" tabindex="${this.activeTab === 'departments' ? '0' : '-1'}" data-studio-tab="departments">Struktur & Departemen</button>
+        <button id="studio-tab-organization" class="workspace-nav-link ${this.activeTab === 'organization' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'organization'}" aria-controls="studio-panel-organization" tabindex="${this.activeTab === 'organization' ? '0' : '-1'}" data-studio-tab="organization">Hierarki Organisasi</button>
+        <button id="studio-tab-university" class="workspace-nav-link ${this.activeTab === 'university' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'university'}" aria-controls="studio-panel-university" tabindex="${this.activeTab === 'university' ? '0' : '-1'}" data-studio-tab="university">Bagan Universitas</button>
+        <button id="studio-tab-access" class="workspace-nav-link ${this.activeTab === 'access' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'access'}" aria-controls="studio-panel-access" tabindex="${this.activeTab === 'access' ? '0' : '-1'}" data-studio-tab="access">Akses Akun</button>
+        <button id="studio-tab-demographics" class="workspace-nav-link ${this.activeTab === 'demographics' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'demographics'}" aria-controls="studio-panel-demographics" tabindex="${this.activeTab === 'demographics' ? '0' : '-1'}" data-studio-tab="demographics">Statistik Akun</button>
+        <button id="studio-tab-collections" class="workspace-nav-link ${this.activeTab === 'collections' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'collections'}" aria-controls="studio-panel-collections" tabindex="${this.activeTab === 'collections' ? '0' : '-1'}" data-studio-tab="collections">Data Organisasi</button>
+        <button id="studio-tab-assets" class="workspace-nav-link ${this.activeTab === 'assets' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'assets'}" aria-controls="studio-panel-assets" tabindex="${this.activeTab === 'assets' ? '0' : '-1'}" data-studio-tab="assets">Aset & Versi</button>
+        <button id="studio-tab-security" class="workspace-nav-link ${this.activeTab === 'security' ? 'active' : ''}" type="button" role="tab" aria-selected="${this.activeTab === 'security'}" aria-controls="studio-panel-security" tabindex="${this.activeTab === 'security' ? '0' : '-1'}" data-studio-tab="security">Status Darurat</button>
       </div>
       <form id="site-studio-form" class="site-studio-form">
         <section id="studio-panel-theme" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-theme" tabindex="0" data-studio-panel="theme" ${this.activeTab !== 'theme' ? 'hidden' : ''}>
@@ -177,36 +328,56 @@ export class SiteStudio {
             <label class="form-group"><span class="form-label">GAMBAR HERO DASHBOARD</span>${imageSelect('heroImage', currentHero, BUILTIN_SITE_IMAGES.heroes, { allowEmpty: true, emptyLabel: 'Tanpa gambar hero' })}</label>
           </div>
           <h3>PALET WARNA</h3>
-          <div class="studio-color-grid">
-            ${Object.entries({ background: 'Latar', panel: 'Panel', accent: 'Aksen utama', accentAlt: 'Aksen kedua', danger: 'Status bahaya', success: 'Status sukses', info: 'Status informasi', text: 'Teks utama', textMuted: 'Teks sekunder', border: 'Garis' }).map(([key, label]) => `
-              <label class="studio-color-field"><span>${label}</span><input type="color" name="color.${key}" value="${escapeHtml(this.config.theme.colors[key])}" /><code>${escapeHtml(this.config.theme.colors[key])}</code></label>
-            `).join('')}
+          <div class="studio-palette-grid">
+            ${paletteEditor('dark', 'TEMA GELAP', 'Palet ini diterapkan saat tema gelap aktif.', this.config.theme.colors)}
+            ${paletteEditor('light', 'TEMA CERAH', 'Palet ini diterapkan saat tema cerah aktif.', this.config.theme.lightColors)}
           </div>
           <h3>TIPOGRAFI DAN BENTUK</h3>
           <div class="admin-form-grid">
-            <label class="form-group"><span class="form-label">FONT ISI</span>${fontSelect('font.body', this.config.theme.fonts.body)}</label>
-            <label class="form-group"><span class="form-label">FONT JUDUL</span>${fontSelect('font.heading', this.config.theme.fonts.heading)}</label>
-            <label class="form-group"><span class="form-label">FONT MONOSPACE</span>${fontSelect('font.mono', this.config.theme.fonts.mono)}</label>
+            <label class="form-group"><span class="form-label">FONT ISI</span>${fontSelect('font.body', this.config.theme.fonts.body)}<span class="studio-font-preview" data-font-preview="font.body">${FONT_PREVIEW_SAMPLES['font.body']}</span><small class="studio-font-preview-meta" data-font-preview-meta="font.body"></small></label>
+            <label class="form-group"><span class="form-label">FONT JUDUL</span>${fontSelect('font.heading', this.config.theme.fonts.heading)}<span class="studio-font-preview" data-font-preview="font.heading">${FONT_PREVIEW_SAMPLES['font.heading']}</span><small class="studio-font-preview-meta" data-font-preview-meta="font.heading"></small></label>
+            <label class="form-group"><span class="form-label">FONT MONOSPACE</span>${fontSelect('font.mono', this.config.theme.fonts.mono)}<span class="studio-font-preview" data-font-preview="font.mono">${FONT_PREVIEW_SAMPLES['font.mono']}</span><small class="studio-font-preview-meta" data-font-preview-meta="font.mono"></small></label>
             <label class="form-group"><span class="form-label">UKURAN DASAR</span><input class="form-input" name="typeScale" type="range" min="14" max="22" value="${this.config.theme.typeScale}" /><output data-scale-output>${this.config.theme.typeScale}px</output></label>
-            <label class="form-group"><span class="form-label">BENTUK KOMPONEN</span><select class="form-select" name="shape"><option value="tactical">Tactical</option><option value="soft">Lembut</option><option value="square">Kotak</option></select></label>
+            <label class="form-group"><span class="form-label">BENTUK KOMPONEN</span><select class="form-select" name="shape"><option value="tactical">Tactical</option><option value="soft">Lembut</option><option value="square">Kotak</option></select><div class="studio-shape-preview" data-shape-preview><div class="studio-shape-sample"><span>HMIF // PANEL</span><strong>Contoh komponen</strong><small>Pratinjau bentuk yang dipilih.</small><button type="button" disabled>LIHAT DETAIL</button></div></div></label>
             <label class="form-group"><span class="form-label">GAYA IKON</span><select class="form-select" name="iconStyle"><option value="tactical">Tactical</option><option value="minimal">Minimal</option><option value="text">Teks</option></select></label>
             <label class="form-group"><span class="form-label">KONTRAS</span><select class="form-select" name="contrast"><option value="normal">Normal</option><option value="high">Tinggi</option></select></label>
           </div>
           <label class="studio-toggle"><input type="checkbox" name="motion" /> <span>Aktifkan animasi antarmuka</span></label>
+          <h3>PARTIKEL LATAR</h3>
+          <div class="studio-dust-grid">
+            ${[['density', 'KEPADATAN DUST'], ['opacity', 'INTENSITAS DUST']].map(([key, label]) => {
+              const value = this.config.theme.dust?.[key] ?? 100;
+              const name = key === 'density' ? 'dustDensity' : 'dustOpacity';
+              return `<label class="form-group studio-dust-field"><span class="form-label">${label}</span><input class="form-input studio-dust-range" type="range" min="10" max="${DUST_PERCENT_MAX}" step="1" value="${value}" data-dust-range="${key}" aria-label="${label} slider" /><span class="studio-dust-number"><input class="form-input" name="${name}" type="number" min="10" max="${DUST_PERCENT_MAX}" step="1" value="${value}" required aria-label="${label} dalam persen" /><span>%</span></span><output data-dust-output="${key}">${value}%</output></label>`;
+            }).join('')}
+          </div>
+          <p class="studio-help">Rentang dapat diatur manual dari 10% hingga ${DUST_PERCENT_MAX}%. Kepadatan tinggi menambah partikel dan beban perangkat. Gerakan mengikuti pengaturan animasi dan reduced-motion perangkat.</p>
           <div class="studio-contrast" data-contrast-check role="status"></div>
         </section>
         <section id="studio-panel-pages" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-pages" tabindex="0" data-studio-panel="pages" ${this.activeTab !== 'pages' ? 'hidden' : ''}>
-          <h3>URUTAN DAN VISIBILITAS BLOK</h3>
-          <div class="studio-block-list">${this.config.pages.map((page, index) => `
-            <div class="studio-block-row" data-block-row="${page.id}">
+          <h3>NAVIGASI DAN VISIBILITAS HALAMAN</h3>
+          <p class="studio-help">Urutan dan visibilitas di sini hanya mengatur menu sidebar. Susunan hierarki Peta Navigasi Situs dikelola terpisah di bawah ini.</p>
+          <div class="studio-block-list">${sidebarOrder.map((id, index) => {
+            const page = pagesById.get(id);
+            const customPageEntry = customPagesByNavId.get(id);
+            if (!page && !customPageEntry) return '';
+            const customPage = customPageEntry?.page;
+            const label = page ? labels[page.id] : customPage.title;
+            const visibilityName = page ? `visible.${page.id}` : `customPage.${customPageEntry.index}.visible`;
+            return `
+            <div class="studio-block-row" data-sidebar-order-item="${escapeHtml(id)}">
               <span class="studio-block-number">${String(index + 1).padStart(2, '0')}</span>
-              <strong>${labels[page.id]}</strong>
-              <label class="studio-toggle"><input type="checkbox" name="visible.${page.id}" ${page.visible ? 'checked' : ''} /> <span>Tampil</span></label>
-              <select class="form-select" name="layout.${page.id}" aria-label="Tata letak ${labels[page.id]}"><option value="default" ${page.layout === 'default' ? 'selected' : ''}>Normal</option><option value="wide" ${page.layout === 'wide' ? 'selected' : ''}>Lebar</option><option value="compact" ${page.layout === 'compact' ? 'selected' : ''}>Ringkas</option></select>
-              <button class="btn-tactical" type="button" data-move-block="${page.id}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Naikkan ${labels[page.id]}">↑</button>
-              <button class="btn-tactical" type="button" data-move-block="${page.id}" data-direction="down" ${index === this.config.pages.length - 1 ? 'disabled' : ''} aria-label="Turunkan ${labels[page.id]}">↓</button>
-            </div>
-          `).join('')}</div>
+              <strong>${escapeHtml(label)}</strong>
+              <label class="studio-toggle"><input type="checkbox" name="${visibilityName}" ${(page ? page.visible : customPage.visible) ? 'checked' : ''} /> <span>Tampil</span></label>
+              ${page
+                ? `<select class="form-select" name="layout.${page.id}" aria-label="Tata letak ${labels[page.id]}"><option value="default" ${page.layout === 'default' ? 'selected' : ''}>Normal</option><option value="wide" ${page.layout === 'wide' ? 'selected' : ''}>Lebar</option><option value="compact" ${page.layout === 'compact' ? 'selected' : ''}>Ringkas</option></select>`
+                : '<span class="studio-help">Halaman kustom</span>'}
+              <button class="btn-tactical" type="button" data-move-sidebar-item="${escapeHtml(id)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Naikkan ${escapeHtml(label)}">↑</button>
+              <button class="btn-tactical" type="button" data-move-sidebar-item="${escapeHtml(id)}" data-direction="down" ${index === sidebarOrder.length - 1 ? 'disabled' : ''} aria-label="Turunkan ${escapeHtml(label)}">↓</button>
+            </div>`;
+          }).join('')}</div>
+          ${renderSiteMapEditor(siteMapNodes, sidebarLabels)}
+          ${this.renderCustomPagesPanel()}
           <h3>KONTEN TEKS</h3>
           <label class="form-group"><span class="form-label">EYEBROW DASHBOARD</span><input class="form-input" name="heroEyebrow" maxlength="80" value="${escapeHtml(this.config.content.heroEyebrow)}" /></label>
           <label class="form-group"><span class="form-label">DESKRIPSI DASHBOARD</span><textarea class="form-textarea" name="heroLead" maxlength="500">${escapeHtml(this.config.content.heroLead)}</textarea></label>
@@ -223,8 +394,23 @@ export class SiteStudio {
             <label class="form-group"><span class="form-label">JUDUL ${label.toUpperCase()}</span><input class="form-input" name="title.${id}" maxlength="80" value="${escapeHtml(this.config.content.sectionTitles[id])}" /></label>
           `).join('')}</div>
         </section>
+        <section id="studio-panel-map" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-map" tabindex="0" data-studio-panel="map" ${this.activeTab !== 'map' ? 'hidden' : ''}>
+          ${renderCampusMapPanel(this.config.content.data.campusMap || { navigationLabel: 'Peta Kampus', summary: '', publicWidgetVisible: true, defaultZoom: 17, campuses: [] }, this.assets, this.selectedCampusMapFeatureId)}
+        </section>
         <section id="studio-panel-departments" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-departments" tabindex="0" data-studio-panel="departments" ${this.activeTab !== 'departments' ? 'hidden' : ''}>
           ${this.renderDepartmentsPanel(imageSelect, inlineImageSelect)}
+        </section>
+        <section id="studio-panel-organization" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-organization" tabindex="0" data-studio-panel="organization" ${this.activeTab !== 'organization' ? 'hidden' : ''}>
+          ${this.renderOrganizationPanel()}
+        </section>
+        <section id="studio-panel-university" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-university" tabindex="0" data-studio-panel="university" ${this.activeTab !== 'university' ? 'hidden' : ''}>
+          ${renderUniversityOrganizationPanel(this.config.content.data.universityOrganization || { structures: [] })}
+        </section>
+        <section id="studio-panel-access" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-access" tabindex="0" data-studio-panel="access" ${this.activeTab !== 'access' ? 'hidden' : ''}>
+          ${this.renderAccountAccessPanel()}
+        </section>
+        <section id="studio-panel-demographics" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-demographics" tabindex="0" data-studio-panel="demographics" ${this.activeTab !== 'demographics' ? 'hidden' : ''}>
+          ${this.renderStudentDemographicsPanel()}
         </section>
         <section id="studio-panel-collections" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-collections" tabindex="0" data-studio-panel="collections" ${this.activeTab !== 'collections' ? 'hidden' : ''}>
           <h3>IDENTITAS ORGANISASI</h3>
@@ -303,21 +489,57 @@ export class SiteStudio {
           `).join('') || '<p>Belum ada aset yang diunggah.</p>'}</div>
           <h3>VERSI DAN PEMULIHAN</h3>
           <div class="admin-record-list">${this.revisions.map((revision) => `
-            <div class="admin-record-row"><span>v${revision.version} // ${escapeHtml(revision.status)} // ${escapeHtml(new Date(revision.created_at).toLocaleString('id-ID'))}</span><button class="btn-tactical" type="button" data-restore-revision="${revision.id}">PULIHKAN KE DRAFT</button></div>
+            <div class="admin-record-row studio-revision-row"><span>v${revision.version} // ${escapeHtml(revision.status)} // ${escapeHtml(new Date(revision.created_at).toLocaleString('id-ID'))}</span><button class="btn-tactical" type="button" data-restore-revision="${revision.id}">PULIHKAN KE DRAFT</button></div>
           `).join('') || '<p>Belum ada versi.</p>'}</div>
           <h3>LOG AKTIVITAS ADMIN</h3>
           <div class="admin-record-list">${this.audit.map((entry) => `<p>${escapeHtml(entry.created_at)} // ${escapeHtml(entry.actor_nim)} // ${escapeHtml(entry.action)} // ${escapeHtml(entry.target_id)}</p>`).join('') || '<p>Belum ada aktivitas.</p>'}</div>
         </section>
+        <section id="studio-panel-security" class="studio-panel" role="tabpanel" aria-labelledby="studio-tab-security" tabindex="0" data-studio-panel="security" ${this.activeTab !== 'security' ? 'hidden' : ''}>
+          <h3>PENGUMUMAN KEAMANAN PUBLIK</h3>
+          <p class="studio-help">Pengumuman ditampilkan kepada semua pengunjung, termasuk yang belum masuk. Aktifkan secara manual setelah tim mengonfirmasi adanya gangguan; jangan cantumkan detail teknis, data pribadi, atau dugaan yang belum terverifikasi.</p>
+          ${this.securityNoticeError ? `<p class="auth-feedback" role="alert">${escapeHtml(this.securityNoticeError)}</p>` : ''}
+          <div class="admin-form-grid">
+            <label class="form-group"><span class="form-label">STATUS LAYANAN</span>
+              <select class="form-select" data-security-notice-status>
+                <option value="normal" ${this.securityNotice.status === 'normal' ? 'selected' : ''}>Normal</option>
+                <option value="investigating" ${this.securityNotice.status === 'investigating' ? 'selected' : ''}>Sedang diperiksa</option>
+                <option value="incident" ${this.securityNotice.status === 'incident' ? 'selected' : ''}>Gangguan keamanan ditangani</option>
+                <option value="recovering" ${this.securityNotice.status === 'recovering' ? 'selected' : ''}>Pemulihan layanan</option>
+              </select>
+            </label>
+            <label class="form-group"><span class="form-label">PESAN PUBLIK (OPSIONAL)</span>
+              <textarea class="form-textarea" data-security-notice-message maxlength="500" rows="3" placeholder="Jika kosong, pesan aman standar akan digunakan.">${escapeHtml(this.securityNotice.message)}</textarea>
+            </label>
+          </div>
+          <div class="studio-security-notice-actions">
+            <button class="btn-tactical danger" type="button" data-save-security-notice>TERBITKAN STATUS DARURAT</button>
+            <span class="studio-help">Terakhir diperbarui: ${escapeHtml(this.securityNotice.updatedAt || 'belum pernah')}</span>
+          </div>
+          <p class="auth-feedback" data-security-notice-feedback role="status" aria-live="polite"></p>
+          <div class="studio-info-banner">
+            <strong>KANAL INDEPENDEN:</strong> Tombol ini mengubah status pada API utama, sehingga tidak tersedia saat server utama mati atau tidak tepercaya. Paket halaman status independen berada di folder <code>status-page</code>; deploy terpisah dan sambungkan feed-nya sesuai panduan sebelum mengandalkannya saat pemulihan.
+          </div>
+        </section>
         <p class="auth-feedback" data-studio-feedback role="status"></p>
-        <div class="studio-actions">
-          <button class="btn-tactical" type="button" data-action="preview">PRATINJAU</button>
-          <button class="btn-tactical" type="button" data-action="cancel-preview">TUTUP PRATINJAU</button>
+        <div class="studio-actions" aria-label="Aksi Site Studio">
+          <button class="btn-tactical" type="button" data-action="preview" aria-pressed="${this.previewing}">PRATINJAU</button>
+          <button class="btn-tactical" type="button" data-action="cancel-preview" ${this.previewing ? '' : 'disabled'}>TUTUP PRATINJAU</button>
+          <span class="studio-actions-spacer"></span>
+          <button class="btn-tactical danger" type="button" data-action="reset">KEMBALI KE DEFAULT</button>
+          <button class="btn-tactical" type="button" data-action="close">TUTUP STUDIO</button>
           <button class="btn-tactical primary" type="button" data-action="save">SIMPAN DRAFT</button>
           <button class="btn-tactical gold" type="button" data-action="publish">PUBLIKASIKAN</button>
-          <button class="btn-tactical" type="button" data-action="close">TUTUP STUDIO</button>
         </div>
       </form>
+      </div>
     `;
+
+    const tabContainer = this.getTabContainer?.();
+    const toolbar = body.querySelector('.studio-toolbar');
+    if (tabContainer && toolbar) {
+      tabContainer.replaceChildren(toolbar);
+      tabContainer.hidden = false;
+    }
 
     const form = body.querySelector('#site-studio-form');
     form.elements.shape.value = this.config.theme.shape;
@@ -326,15 +548,106 @@ export class SiteStudio {
     form.elements.backgroundImage.value = currentBackground;
     form.elements.contrast.value = this.config.theme.contrast;
     form.elements.motion.checked = this.config.theme.motion;
-    const studioTabs = [...body.querySelectorAll('[data-studio-tab]')];
+    form.elements.dustDensity.value = String(this.config.theme.dust?.density ?? 100);
+    form.elements.dustOpacity.value = String(this.config.theme.dust?.opacity ?? 100);
+    const shapePreview = form.querySelector('[data-shape-preview]');
+    shapePreview.dataset.shape = form.elements.shape.value;
+    form.elements.shape.addEventListener('change', () => {
+      shapePreview.dataset.shape = form.elements.shape.value;
+    });
+    const updateFontSizePreview = () => {
+      const size = `${form.elements.typeScale.value}px`;
+      form.querySelectorAll('.studio-font-picker').forEach((select) => {
+        select.style.fontSize = size;
+        [...select.options].forEach((option) => {
+          option.style.fontSize = size;
+        });
+      });
+      form.querySelectorAll('.studio-font-preview').forEach((preview) => {
+        preview.style.fontSize = size;
+      });
+      form.querySelectorAll('[data-font-preview-meta]').forEach((meta) => {
+        const select = form.elements[meta.dataset.fontPreviewMeta];
+        meta.textContent = `${select.selectedOptions[0]?.textContent.trim() || 'Font'} // ${size}`;
+        meta.style.fontFamily = select.style.fontFamily;
+        meta.style.fontSize = size;
+      });
+    };
+    form.querySelectorAll('select[name^="font."]').forEach((select) => {
+      const preview = form.querySelector(`[data-font-preview="${CSS.escape(select.name)}"]`);
+      const updatePreview = async () => {
+        const selectedFont = select.value;
+        const sample = FONT_PREVIEW_SAMPLES[select.name];
+        if (!preview || !sample) return;
+
+        preview.textContent = sample;
+        let family = selectedFont;
+        if (selectedFont.startsWith('asset:')) {
+          const assetId = /^asset:([a-f0-9-]{36})$/i.exec(selectedFont)?.[1];
+          const asset = assetId && this.assets.find((item) => item.id === assetId && item.kind === 'font');
+          if (!assetId || !asset) {
+            preview.textContent = 'Font yang dipilih tidak tersedia.';
+            preview.dataset.fontPreviewState = 'error';
+            return;
+          }
+
+          family = `HMIFAsset-${assetId}`;
+          if (!document.fonts.check(`16px "${family}"`)) {
+            preview.dataset.fontPreviewState = 'loading';
+            let fontLoad = this.fontPreviewLoads.get(assetId);
+            if (!fontLoad) {
+              fontLoad = new FontFace(family, `url("/api/site/assets/${assetId}/file")`)
+                .load()
+                .then((loadedFont) => {
+                  document.fonts.add(loadedFont);
+                  return family;
+                });
+              this.fontPreviewLoads.set(assetId, fontLoad);
+            }
+            try {
+              await fontLoad;
+            } catch {
+              this.fontPreviewLoads.delete(assetId);
+              if (select.value === selectedFont) {
+                preview.textContent = `Pratinjau ${asset.original_name} gagal dimuat.`;
+                preview.dataset.fontPreviewState = 'error';
+              }
+              return;
+            }
+          }
+        } else if (!FONT_OPTIONS.includes(selectedFont)) {
+          preview.textContent = 'Pilihan font tidak dikenal.';
+          preview.dataset.fontPreviewState = 'error';
+          return;
+        }
+
+        if (select.value !== selectedFont) return;
+        const fallback = select.name === 'font.mono' ? 'monospace' : 'sans-serif';
+        preview.style.fontFamily = `"${family}", ${fallback}`;
+        select.style.fontFamily = `"${family}", ${fallback}`;
+        preview.dataset.fontPreviewState = 'ready';
+        updateFontSizePreview();
+      };
+
+      select.addEventListener('change', updatePreview);
+      updatePreview();
+    });
+    updateFontSizePreview();
+    const studioTabs = [...(tabContainer || body).querySelectorAll('[data-studio-tab]')];
     studioTabs.forEach((button, index) => {
       button.addEventListener('click', () => {
+        if (this.activeTab === 'demographics' && this.studentDemographicValuesDirty
+          && !window.confirm('Nilai akun belum disimpan. Tinggalkan perubahan tersebut?')) return;
+        if (this.activeTab === 'demographics') {
+          this.studentDemographicValuesDirty = false;
+          this.studentDemographicSettings = this.collectStudentDemographicSettings(body);
+        }
         const collected = this.tryCollectConfig(form, body);
         if (!collected) return;
         this.config = collected;
         this.activeTab = button.dataset.studioTab;
         this.render(body);
-        body.querySelector(`[data-studio-tab="${this.activeTab}"]`)?.focus();
+        document.getElementById(`studio-tab-${this.activeTab}`)?.focus();
       });
       button.addEventListener('keydown', (event) => {
         let nextIndex = index;
@@ -349,8 +662,38 @@ export class SiteStudio {
         studioTabs[nextIndex].click();
       });
     });
-    form.querySelectorAll('input[type="color"]').forEach((input) => input.addEventListener('input', () => {
+    form.querySelector('[data-save-security-notice]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const feedback = form.querySelector('[data-security-notice-feedback]');
+      button.disabled = true;
+      const result = await this.api.updateSecurityNotice(
+        form.querySelector('[data-security-notice-status]').value,
+        form.querySelector('[data-security-notice-message]').value
+      );
+      button.disabled = false;
+      if (!result.ok) {
+        feedback.textContent = result.error;
+        return;
+      }
+      this.securityNotice = result.data.notice;
+      this.securityNoticeError = '';
+      window.dispatchEvent(new CustomEvent('security-notice-updated'));
+      feedback.textContent = result.data.notice.status === 'normal'
+        ? 'PENGUMUMAN DARURAT DINONAKTIFKAN.'
+        : 'PENGUMUMAN DIPUBLIKASIKAN UNTUK SELURUH PENGUNJUNG.';
+    });
+    form.querySelectorAll('input[type="color"][name^="color."]').forEach((input) => input.addEventListener('input', () => {
       input.nextElementSibling.textContent = input.value;
+      const [, palette, key] = input.name.split('.');
+      const sample = form.querySelector(`[data-palette-preview="${palette}"] .studio-palette-sample`);
+      const sampleProperty = {
+        background: 'background',
+        panel: 'panel',
+        accent: 'accent',
+        text: 'text',
+        border: 'border'
+      }[key];
+      if (sampleProperty) sample.style.setProperty(`--sample-${sampleProperty}`, input.value);
       this.updateContrast(form);
     }));
     form.elements['identity.logo'].addEventListener('change', () => {
@@ -373,15 +716,152 @@ export class SiteStudio {
     });
     form.elements.typeScale.addEventListener('input', () => {
       form.querySelector('[data-scale-output]').textContent = `${form.elements.typeScale.value}px`;
+      updateFontSizePreview();
     });
-    form.querySelectorAll('[data-move-block]').forEach((button) => button.addEventListener('click', () => {
+    const bindDustControls = (key, inputName) => {
+      const range = form.querySelector(`[data-dust-range="${key}"]`);
+      const number = form.elements[inputName];
+      const output = form.querySelector(`[data-dust-output="${key}"]`);
+      const update = (fromRange) => {
+        if (fromRange) number.value = range.value;
+        else if (number.value !== '' && number.checkValidity()) range.value = number.value;
+        output.textContent = number.value === '' ? '—' : `${number.value}%`;
+      };
+      range.addEventListener('input', () => update(true));
+      number.addEventListener('input', () => update(false));
+    };
+    bindDustControls('density', 'dustDensity');
+    bindDustControls('opacity', 'dustOpacity');
+    form.querySelectorAll('.studio-font-picker').forEach((select) => {
+      select.addEventListener('change', updateFontSizePreview);
+    });
+    bindCampusMapPanel(this, form, body);
+    bindUniversityOrganizationPanel(this, form, body);
+    form.querySelectorAll('[data-move-site-map-node]').forEach((button) => button.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      collected.content.siteMapNodes = moveSiteMapNode(
+        collected.content.siteMapNodes,
+        button.dataset.moveSiteMapNode,
+        button.dataset.direction
+      );
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+    }));
+    body.querySelector('[data-site-map-group-add]')?.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      const groupCount = collected.content.siteMapNodes.filter(({ type }) => type === 'group').length;
+      if (groupCount >= 50) return this.feedback(body, 'BATAS 50 KELOMPOK PETA SITUS TERCAPAI.');
+      collected.content.siteMapNodes.push(createSiteMapGroupDraft());
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+      body.querySelector(`[name="siteMapNode.${collected.content.siteMapNodes[collected.content.siteMapNodes.length - 1].id}.title"]`)?.focus();
+    });
+    body.querySelectorAll('[data-site-map-group-delete]').forEach((button) => button.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      collected.content.siteMapNodes = removeSiteMapGroup(collected.content.siteMapNodes, button.dataset.siteMapGroupDelete);
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+      this.feedback(body, 'KELOMPOK DIHAPUS; HALAMAN ANAK DIPINDAHKAN KE AKAR HMIF UMB.');
+    }));
+    form.querySelectorAll('[data-move-sidebar-item]').forEach((button) => button.addEventListener('click', () => {
       const collected = this.tryCollectConfig(form, body);
       if (!collected) return;
       this.config = collected;
-      const current = this.config.pages.findIndex((page) => page.id === button.dataset.moveBlock);
+      const current = this.config.content.sidebarOrder.findIndex((id) => id === button.dataset.moveSidebarItem);
       const next = button.dataset.direction === 'up' ? current - 1 : current + 1;
-      if (next < 0 || next >= this.config.pages.length) return;
-      [this.config.pages[current], this.config.pages[next]] = [this.config.pages[next], this.config.pages[current]];
+      if (current < 0 || next < 0 || next >= this.config.content.sidebarOrder.length) return;
+      [this.config.content.sidebarOrder[current], this.config.content.sidebarOrder[next]] = [
+        this.config.content.sidebarOrder[next],
+        this.config.content.sidebarOrder[current]
+      ];
+      const pagesById = new Map(this.config.pages.map((page) => [page.id, page]));
+      this.config.pages = this.config.content.sidebarOrder
+        .filter((id) => pagesById.has(id))
+        .map((id) => pagesById.get(id));
+      const customPagesByNavId = new Map(this.config.content.customPages.map((page) => [`custom-${page.id}`, page]));
+      this.config.content.customPages = this.config.content.sidebarOrder
+        .filter((id) => customPagesByNavId.has(id))
+        .map((id) => customPagesByNavId.get(id));
+      this.render(body);
+    }));
+    body.querySelector('[data-custom-page-add]')?.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      const pages = collected.content.customPages;
+      if (pages.length >= 20) return this.feedback(body, 'BATAS 20 HALAMAN KUSTOM TERCAPAI.');
+      const usedSlugs = new Set(pages.map(({ slug }) => slug));
+      let suffix = pages.length + 1;
+      let slug = `halaman-baru-${suffix}`;
+      while (usedSlugs.has(slug)) slug = `halaman-baru-${++suffix}`;
+      const id = crypto.randomUUID();
+      pages.push({
+        id,
+        slug,
+        title: 'Halaman Baru',
+        description: '',
+        layout: 'default',
+        visible: true,
+        blocks: [{ type: 'text', title: 'Modul Teks', body: 'Tulis informasi yang ingin ditampilkan.' }]
+      });
+      collected.content.sidebarOrder.push(`custom-${id}`);
+      collected.content.siteMapNodes.push({ id: `custom-${id}`, type: 'page', parentId: '' });
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+      body.querySelector(`[name="customPage.${pages.length - 1}.title"]`)?.focus();
+    });
+    body.querySelectorAll('[data-custom-page-delete]').forEach((button) => button.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      const [removedPage] = collected.content.customPages.splice(Number(button.dataset.customPageDelete), 1);
+      if (removedPage) {
+        const removedId = `custom-${removedPage.id}`;
+        collected.content.sidebarOrder = collected.content.sidebarOrder.filter((id) => id !== removedId);
+        const removedNode = collected.content.siteMapNodes.find((node) => node.id === removedId);
+        collected.content.siteMapNodes = collected.content.siteMapNodes
+          .filter((node) => node.id !== removedId)
+          .map((node) => node.parentId === removedId
+            ? { ...node, parentId: removedNode?.parentId || '' }
+            : node);
+      }
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+      this.feedback(body, 'HALAMAN DIHAPUS DARI DRAFT LOKAL.');
+    }));
+    body.querySelectorAll('[data-custom-block-add]').forEach((button) => button.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      const page = collected.content.customPages[Number(button.dataset.customBlockAdd)];
+      if (!page || page.blocks.length >= 12) return;
+      page.blocks.push({ type: 'text', title: 'Modul Baru', body: 'Tulis isi modul.' });
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+    }));
+    body.querySelectorAll('[data-custom-block-delete]').forEach((button) => button.addEventListener('click', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      const [pageIndex, blockIndex] = button.dataset.customBlockDelete.split('.').map(Number);
+      const page = collected.content.customPages[pageIndex];
+      if (!page || page.blocks.length <= 1) return;
+      page.blocks.splice(blockIndex, 1);
+      this.config = collected;
+      this.activeTab = 'pages';
+      this.render(body);
+      this.feedback(body, 'MODUL DIHAPUS DARI DRAFT LOKAL.');
+    }));
+    body.querySelectorAll('[data-custom-block-type]').forEach((select) => select.addEventListener('change', () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      this.config = collected;
+      this.activeTab = 'pages';
       this.render(body);
     }));
     body.querySelector('[data-upload-asset]').addEventListener('click', (event) => this.uploadAsset(event, body));
@@ -617,35 +1097,746 @@ export class SiteStudio {
     });
 
     this.bindDepartmentEvents(form, body);
+    this.bindOrganizationEvents(form, body);
+    const accountCheckboxes = [...body.querySelectorAll('[data-access-account]')];
+    const updateAccountSelectionCount = () => {
+      const selectedCount = accountCheckboxes.filter((input) => input.checked).length;
+      const count = body.querySelector('[data-access-selection-count]');
+      if (count) count.textContent = `${selectedCount} akun dipilih`;
+    };
+    accountCheckboxes.forEach((input) => input.addEventListener('change', updateAccountSelectionCount));
+    body.querySelector('[data-access-select-all]')?.addEventListener('click', () => {
+      accountCheckboxes.forEach((input) => { input.checked = true; });
+      updateAccountSelectionCount();
+    });
+    body.querySelector('[data-access-clear-selection]')?.addEventListener('click', () => {
+      accountCheckboxes.forEach((input) => { input.checked = false; });
+      updateAccountSelectionCount();
+    });
+    body.querySelector('[data-access-bulk-save]')?.addEventListener('click', async (event) => {
+      const selectedAccountIds = accountCheckboxes.filter((input) => input.checked).map((input) => input.dataset.accessAccount);
+      if (!selectedAccountIds.length) return this.feedback(body, 'PILIH SETIDAKNYA SATU AKUN ANGGOTA.');
+      if (selectedAccountIds.length > 500) return this.feedback(body, 'BATAS PERUBAHAN ADALAH 500 AKUN SEKALIGUS.');
+
+      const clearanceValue = form.elements.accessClearance.value;
+      const clearanceLevel = clearanceValue ? Number(clearanceValue) : undefined;
+      const capabilities = [...body.querySelectorAll('[data-access-capability]:checked')]
+        .map((input) => input.dataset.accessCapability);
+      if (clearanceLevel === undefined && !capabilities.length) {
+        return this.feedback(body, 'PILIH PERUBAHAN CLEARANCE ATAU MINIMAL SATU CAPABILITY.');
+      }
+
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      this.config = collected;
+      const capabilityAction = form.elements.accessCapabilityAction.value;
+      const changes = [
+        ...(clearanceLevel === undefined ? [] : [`clearance menjadi level ${clearanceLevel}`]),
+        ...(capabilities.length ? [`${capabilityAction === 'grant' ? 'memberikan' : 'mencabut'} ${capabilities.length} capability`] : [])
+      ].join(' dan ');
+      if (!window.confirm(`Terapkan ${changes} kepada ${selectedAccountIds.length} akun terpilih?`)) return;
+
+      const button = event.currentTarget;
+      const feedback = body.querySelector('[data-access-feedback]');
+      button.disabled = true;
+      if (feedback) feedback.textContent = 'Menyimpan perubahan akses...';
+      const result = await this.api.updateAccountAccessBulk({
+        accountIds: selectedAccountIds,
+        clearanceLevel,
+        capabilities,
+        capabilityAction
+      });
+      if (!result.ok) {
+        if (feedback) feedback.textContent = result.error;
+        button.disabled = false;
+        return;
+      }
+
+      const usersResult = await this.api.getAllUsers();
+      if (usersResult?.ok && Array.isArray(usersResult.data?.users)) {
+        this.users = usersResult.data.users;
+        this.usersError = '';
+        this.accessFeedback = `${result.data.updated_count} akun diperbarui. Menu pengguna perlu dimuat ulang untuk menyegarkan tampilan.`;
+      } else {
+        this.usersError = usersResult?.error || 'Daftar akun tidak dapat dimuat ulang.';
+        this.accessFeedback = `Perubahan berhasil diterapkan ke ${result.data.updated_count} akun, tetapi daftar akun gagal dimuat ulang: ${this.usersError}`;
+      }
+      this.activeTab = 'access';
+      this.render(body);
+    });
+    body.querySelector('[data-demographic-field-add]')?.addEventListener('click', () => {
+      if (this.studentDemographicSettingsError) return this.feedback(body, this.studentDemographicSettingsError);
+      if (this.studentDemographicValuesDirty
+        && !window.confirm('Nilai akun belum disimpan. Tinggalkan perubahan tersebut?')) return;
+      this.studentDemographicValuesDirty = false;
+      this.studentDemographicSettings = this.collectStudentDemographicSettings(body);
+      if (this.studentDemographicSettings.customColumns.length >= 30) return this.feedback(body, 'BATAS 30 KOLOM KUSTOM TERCAPAI.');
+      this.studentDemographicSettings.customColumns.push({
+        id: `field-${crypto.randomUUID().replaceAll('-', '')}`,
+        label: 'Kolom baru',
+        type: 'text',
+        options: [],
+        visible: true
+      });
+      this.studentDemographicSettingsDirty = true;
+      this.activeTab = 'demographics';
+      this.render(body);
+    });
+    body.querySelectorAll('[data-demographic-field-type]').forEach((select) => select.addEventListener('change', () => {
+      this.studentDemographicSettingsDirty = true;
+      const fieldId = select.closest('[data-demographic-field]')?.dataset.demographicField;
+      const options = fieldId && body.querySelector(`[data-demographic-options-for="${CSS.escape(fieldId)}"]`);
+      if (options) options.hidden = !['single_select', 'multi_select'].includes(select.value);
+      this.disableDemographicValueSave(body);
+    }));
+    body.querySelectorAll('[data-custom-field-value]').forEach((input) => {
+      input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', () => {
+        this.studentDemographicValuesDirty = true;
+      });
+    });
+    body.querySelectorAll('[data-demographic-standard-column], [data-demographic-field-label], [data-demographic-field-options], [data-demographic-field-visible]')
+      .forEach((input) => input.addEventListener(input.type === 'checkbox' ? 'change' : 'input', () => {
+        this.studentDemographicSettingsDirty = true;
+        this.disableDemographicValueSave(body);
+      }));
+    body.querySelectorAll('[data-demographic-field-remove]').forEach((button) => button.addEventListener('click', () => {
+      const settings = this.collectStudentDemographicSettings(body);
+      const field = settings.customColumns.find(({ id }) => id === button.dataset.demographicFieldRemove);
+      if (!field) return;
+      if (this.studentDemographicValuesDirty
+        && !window.confirm('Nilai akun belum disimpan. Tinggalkan perubahan tersebut?')) return;
+      this.studentDemographicValuesDirty = false;
+      const hasValues = Object.values(this.studentDemographicValues)
+        .some((accountValues) => accountValues[field.id] !== undefined);
+      const warning = hasValues
+        ? `Hapus kolom "${field.label}" dan seluruh nilainya dari akun? Tindakan ini berlaku setelah pengaturan disimpan.`
+        : `Hapus kolom "${field.label}"?`;
+      if (!window.confirm(warning)) return;
+      settings.customColumns = settings.customColumns.filter(({ id }) => id !== field.id);
+      this.studentDemographicSettings = settings;
+      this.studentDemographicSettingsDirty = true;
+      this.activeTab = 'demographics';
+      this.render(body);
+    }));
+    body.querySelector('[data-demographic-settings-save]')?.addEventListener('click', async () => {
+      if (this.studentDemographicSettingsError) return this.feedback(body, this.studentDemographicSettingsError);
+      if (this.studentDemographicValuesDirty
+        && !window.confirm('Nilai akun belum disimpan dan akan dibuang. Lanjutkan?')) return;
+      this.studentDemographicValuesDirty = false;
+      const settings = this.collectStudentDemographicSettings(body);
+      const result = await this.api.updateStudentDemographicSettings(settings);
+      const feedback = body.querySelector('[data-demographic-settings-feedback]');
+      if (!result.ok) {
+        this.studentDemographicSettingsFeedback = result.error;
+        if (feedback) feedback.textContent = result.error;
+        return;
+      }
+      const fieldIds = new Set(settings.customColumns.map(({ id }) => id));
+      Object.keys(this.studentDemographicValues).forEach((accountId) => {
+        Object.keys(this.studentDemographicValues[accountId]).forEach((fieldId) => {
+          if (!fieldIds.has(fieldId)) delete this.studentDemographicValues[accountId][fieldId];
+        });
+      });
+      this.studentDemographicSettings = result.data.settings;
+      this.studentDemographicSettingsError = '';
+      this.studentDemographicSettingsDirty = false;
+      this.studentDemographicSettingsFeedback = 'Pengaturan kolom tersimpan. Perubahan terlihat pada tabel setelah pemuatan ulang.';
+      this.activeTab = 'demographics';
+      this.render(body);
+    });
+    body.querySelector('[data-demographic-account-select]')?.addEventListener('change', () => {
+      if (this.studentDemographicValuesDirty
+        && !window.confirm('Nilai akun belum disimpan. Tinggalkan perubahan tersebut?')) {
+        body.querySelector('[data-demographic-account-select]').value = this.selectedDemographicAccountId;
+        return;
+      }
+      this.studentDemographicValuesDirty = false;
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return;
+      this.config = collected;
+      this.studentDemographicSettings = this.collectStudentDemographicSettings(body);
+      this.selectedDemographicAccountId = body.querySelector('[data-demographic-account-select]').value;
+      this.activeTab = 'demographics';
+      this.render(body);
+    });
+    body.querySelector('[data-demographic-values-save]')?.addEventListener('click', async () => {
+      if (this.studentDemographicValuesError) return this.feedback(body, this.studentDemographicValuesError);
+      const accountId = body.querySelector('[data-demographic-account-select]')?.value;
+      if (!accountId) return this.feedback(body, 'PILIH AKUN ANGGOTA.');
+      const values = collectCustomFieldValues(body);
+      const result = await this.api.updateStudentDemographicCustomValues(accountId, values);
+      const feedback = body.querySelector('[data-demographic-values-feedback]');
+      if (!result.ok) {
+        this.studentDemographicValuesFeedback = result.error;
+        if (feedback) feedback.textContent = result.error;
+        return;
+      }
+      this.studentDemographicValues[accountId] = result.data.values || {};
+      this.studentDemographicValuesError = '';
+      this.studentDemographicValuesDirty = false;
+      this.studentDemographicValuesFeedback = 'Nilai kolom kustom berhasil disimpan.';
+      if (feedback) feedback.textContent = this.studentDemographicValuesFeedback;
+    });
 
     body.querySelector('[data-action="preview"]').addEventListener('click', async () => {
       const collected = this.tryCollectConfig(form, body);
       if (!collected) return;
-      const validation = await this.api.validateSiteConfig(collected);
-      if (!validation.ok) return this.feedback(body, validation.error);
-      this.config = validation.data.config;
-      this.previewing = true;
-      await this.applyConfig(this.config, { preview: true });
-      this.feedback(body, 'PRATINJAU DRAFT AKTIF DI HALAMAN INI. BELUM DIPUBLIKASIKAN.');
+      this.setActionsBusy(body, true);
+      this.feedback(body, 'MEMVALIDASI DRAFT UNTUK PRATINJAU...');
+      try {
+        const validation = await this.api.validateSiteConfig(collected);
+        if (!validation.ok) {
+          this.feedback(body, validation.error);
+          return;
+        }
+        this.config = validation.data.config;
+        await this.applyConfig(this.config, { preview: true });
+        this.previewing = true;
+        this.showPreview();
+        this.feedback(body, 'PRATINJAU AKTIF. GUNAKAN TOMBOL KEMBALI KE STUDIO PADA PITA DI ATAS PORTAL.');
+      } catch (error) {
+        this.feedback(body, `PRATINJAU GAGAL DIBUKA: ${error.message || 'Terjadi kesalahan.'}`);
+      } finally {
+        this.setActionsBusy(body, false);
+        this.updateActionState(body);
+      }
     });
     body.querySelector('[data-action="cancel-preview"]').addEventListener('click', async () => {
-      await this.cancelPreview();
-      this.feedback(body, 'PRATINJAU DITUTUP. VERSI TERBIT DIPULIHKAN.');
+      this.setActionsBusy(body, true);
+      try {
+        if (await this.cancelPreview(body)) {
+          this.feedback(body, 'PRATINJAU DITUTUP. VERSI TERBIT DIPULIHKAN.');
+        }
+      } finally {
+        this.setActionsBusy(body, false);
+      }
     });
-    body.querySelector('[data-action="save"]').addEventListener('click', () => this.saveDraft(form, body));
+    body.querySelector('[data-action="save"]').addEventListener('click', async () => {
+      this.setActionsBusy(body, true);
+      try {
+        await this.saveDraft(form, body);
+      } finally {
+        this.setActionsBusy(body, false);
+      }
+    });
     body.querySelector('[data-action="publish"]').addEventListener('click', async () => {
-      const saved = await this.saveDraft(form, body);
-      if (saved) await this.publish(body);
+      this.setActionsBusy(body, true);
+      try {
+        const saved = await this.saveDraft(form, body);
+        if (saved) await this.publish(body);
+      } finally {
+        this.setActionsBusy(body, false);
+      }
+    });
+    body.querySelector('[data-action="reset"]').addEventListener('click', async () => {
+      if (!window.confirm('Kembalikan seluruh konfigurasi ke default? Perubahan draft yang belum disimpan akan diganti.')) return;
+      this.setActionsBusy(body, true);
+      try {
+        if (this.previewing && !await this.cancelPreview(body)) return;
+        this.config = withSiteDefaults({});
+        this.render(body);
+        this.feedback(body, 'KONFIGURASI DEFAULT DIMUAT KE DRAFT. SIMPAN DRAFT UNTUK MENERAPKAN PERUBAHAN.');
+      } finally {
+        this.setActionsBusy(body, false);
+      }
     });
     body.querySelector('[data-action="close"]').addEventListener('click', async () => {
-      if (this.previewing) {
-        const published = await this.api.getSiteConfig();
-        if (published.ok) this.applyConfig(published.data.config, { preview: false });
-        this.previewing = false;
+      this.setActionsBusy(body, true);
+      try {
+        if (!await this.cancelPreview(body)) return;
+        this.closeModal();
+      } finally {
+        this.setActionsBusy(body, false);
       }
-      this.closeModal();
     });
     this.updateContrast(form);
+    this.updateActionState(body);
+  }
+
+  renderCustomPagesPanel() {
+    const pages = this.config.content.customPages || [];
+    return `
+      <section class="studio-custom-pages" aria-labelledby="studio-custom-pages-title">
+        <div class="studio-custom-pages-heading">
+          <div>
+            <h3 id="studio-custom-pages-title">HALAMAN KUSTOM // MODUL TERKURASI</h3>
+            <p class="studio-help">Susun halaman dari modul teks dan callout yang tervalidasi. HTML, JavaScript, dan SQL bebas tidak dijalankan.</p>
+          </div>
+          <button class="btn-tactical primary" type="button" data-custom-page-add ${pages.length >= 20 ? 'disabled' : ''}>BUAT HALAMAN</button>
+        </div>
+        ${pages.map((page, pageIndex) => `
+          <article class="studio-custom-page-card" data-custom-page-card>
+            <header class="studio-custom-page-header">
+              <strong>HALAMAN ${String(pageIndex + 1).padStart(2, '0')}</strong>
+              <button class="btn-tactical danger" type="button" data-custom-page-delete="${pageIndex}">HAPUS HALAMAN</button>
+            </header>
+            <div class="admin-form-grid studio-custom-page-fields">
+              <label class="form-group"><span class="form-label">JUDUL HALAMAN</span><input class="form-input" name="customPage.${pageIndex}.title" maxlength="80" value="${escapeHtml(page.title)}" required /></label>
+              <label class="form-group"><span class="form-label">SLUG URL</span><input class="form-input" name="customPage.${pageIndex}.slug" maxlength="48" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value="${escapeHtml(page.slug)}" required /></label>
+              <label class="form-group"><span class="form-label">DESKRIPSI</span><input class="form-input" name="customPage.${pageIndex}.description" maxlength="500" value="${escapeHtml(page.description)}" /></label>
+              <label class="form-group"><span class="form-label">TATA LETAK</span><select class="form-select" name="customPage.${pageIndex}.layout">
+                <option value="default" ${page.layout === 'default' ? 'selected' : ''}>Normal</option>
+                <option value="wide" ${page.layout === 'wide' ? 'selected' : ''}>Lebar</option>
+                <option value="compact" ${page.layout === 'compact' ? 'selected' : ''}>Ringkas</option>
+              </select></label>
+            </div>
+            <div class="studio-custom-page-blocks">
+              ${page.blocks.map((block, blockIndex) => `
+                <section class="studio-custom-page-block">
+                  <header class="studio-custom-page-header">
+                    <strong>MODUL ${String(blockIndex + 1).padStart(2, '0')}</strong>
+                    <button class="btn-tactical" type="button" data-custom-block-delete="${pageIndex}.${blockIndex}" ${page.blocks.length <= 1 ? 'disabled' : ''}>HAPUS MODUL</button>
+                  </header>
+                  <div class="admin-form-grid studio-custom-page-fields">
+                    <label class="form-group"><span class="form-label">JENIS MODUL</span><select class="form-select" name="customPage.${pageIndex}.block.${blockIndex}.type" data-custom-block-type>
+                      <option value="text" ${block.type === 'text' ? 'selected' : ''}>TEKS</option>
+                      <option value="notice" ${block.type === 'notice' ? 'selected' : ''}>CALLOUT</option>
+                    </select></label>
+                    <label class="form-group"><span class="form-label">JUDUL MODUL</span><input class="form-input" name="customPage.${pageIndex}.block.${blockIndex}.title" maxlength="100" value="${escapeHtml(block.title)}" required /></label>
+                    ${block.type === 'notice' ? `<label class="form-group"><span class="form-label">TONE CALLOUT</span><select class="form-select" name="customPage.${pageIndex}.block.${blockIndex}.tone">
+                      <option value="info" ${block.tone === 'info' ? 'selected' : ''}>INFORMASI</option>
+                      <option value="success" ${block.tone === 'success' ? 'selected' : ''}>SUKSES</option>
+                      <option value="warning" ${block.tone === 'warning' ? 'selected' : ''}>PERINGATAN</option>
+                    </select></label>` : ''}
+                  </div>
+                  <label class="form-group"><span class="form-label">ISI MODUL // TEKS BIASA</span><textarea class="form-textarea" name="customPage.${pageIndex}.block.${blockIndex}.body" maxlength="4000" required>${escapeHtml(block.body)}</textarea></label>
+                </section>
+              `).join('')}
+            </div>
+            <button class="btn-tactical" type="button" data-custom-block-add="${pageIndex}" ${page.blocks.length >= 12 ? 'disabled' : ''}>TAMBAH MODUL</button>
+          </article>
+        `).join('') || '<p class="studio-empty-state">Belum ada halaman kustom. Buat halaman untuk mulai menyusun modul.</p>'}
+      </section>
+    `;
+  }
+
+  setActionsBusy(body, busy) {
+    body.querySelector('.site-studio')?.toggleAttribute('aria-busy', busy);
+    body.querySelectorAll('.studio-actions [data-action]').forEach((button) => {
+      button.disabled = busy || (button.dataset.action === 'cancel-preview' && !this.previewing)
+        || (button.dataset.action === 'preview' && this.previewing);
+    });
+  }
+
+  updateActionState(body) {
+    if (!body) return;
+    const previewButton = body.querySelector('[data-action="preview"]');
+    const cancelButton = body.querySelector('[data-action="cancel-preview"]');
+    const stateLabel = body.querySelector('[data-studio-state-label]');
+    if (previewButton) {
+      previewButton.setAttribute('aria-pressed', String(this.previewing));
+      previewButton.textContent = this.previewing ? 'PRATINJAU AKTIF' : 'PRATINJAU';
+    }
+    if (cancelButton) cancelButton.disabled = !this.previewing;
+    if (stateLabel) stateLabel.textContent = this.previewing ? 'PRATINJAU AKTIF // BELUM TERBIT' : 'DRAFT SIAP DIEDIT';
+    body.querySelector('.site-studio')?.classList.toggle('is-previewing', this.previewing);
+  }
+
+  collectStudentDemographicSettings(body) {
+    const visibleColumns = [...body.querySelectorAll('[data-demographic-standard-column]:checked')]
+      .map((input) => input.dataset.demographicStandardColumn);
+    const customColumns = [...body.querySelectorAll('[data-demographic-field]')].map((card) => {
+      const type = card.querySelector('[data-demographic-field-type]').value;
+      return {
+        id: card.dataset.demographicField,
+        label: card.querySelector('[data-demographic-field-label]').value.trim(),
+        type,
+        options: ['single_select', 'multi_select'].includes(type)
+          ? card.querySelector('[data-demographic-field-options]').value.split('\n').map((option) => option.trim()).filter(Boolean)
+          : [],
+        visible: card.querySelector('[data-demographic-field-visible]').checked
+      };
+    });
+    return { visibleColumns, customColumns };
+  }
+
+  disableDemographicValueSave(body) {
+    const button = body.querySelector('[data-demographic-values-save]');
+    if (button) button.disabled = Boolean(
+      this.studentDemographicSettingsError
+      || this.studentDemographicValuesError
+      || this.studentDemographicSettingsDirty
+    );
+    if (this.studentDemographicSettingsDirty) {
+      const feedback = body.querySelector('[data-demographic-values-feedback]');
+      if (feedback) feedback.textContent = 'Simpan konfigurasi kolom terlebih dahulu sebelum menyimpan nilai akun.';
+    }
+  }
+
+  renderStudentDemographicsPanel() {
+    const settings = this.studentDemographicSettings;
+    const members = this.users.filter((user) => user.role !== 'superadmin');
+    const selectedAccount = members.find(({ account_id }) => account_id === this.selectedDemographicAccountId);
+    const selectedValues = this.studentDemographicValues[this.selectedDemographicAccountId] || {};
+    return `
+      <h3>KOLOM TABEL INFORMASI AKUN</h3>
+      <p class="studio-help">Tabel memuat akun anggota nyata dan hanya terlihat bagi pemegang capability <code>student_demographics.view</code>. NIM/email dan nilai kustom yang diaktifkan akan terlihat oleh pemegang capability tersebut. Jangan memasukkan data pribadi sensitif yang tidak diperlukan.</p>
+      ${this.studentDemographicSettingsError ? `<p class="auth-feedback" role="alert">${escapeHtml(this.studentDemographicSettingsError)}</p>` : ''}
+      ${this.studentDemographicValuesError ? `<p class="auth-feedback" role="alert">${escapeHtml(this.studentDemographicValuesError)}</p>` : ''}
+      <section class="studio-organization-section studio-demographics-config">
+        <h4>KOLOM AKUN STANDAR</h4>
+        <div class="studio-demographics-column-list">
+          ${STUDENT_ACCOUNT_COLUMNS.map((column) => `
+            <label class="studio-access-account">
+              <input type="checkbox" data-demographic-standard-column="${escapeHtml(column.id)}" ${settings.visibleColumns.includes(column.id) ? 'checked' : ''} />
+              <span><strong>${escapeHtml(column.label)}</strong><small>${escapeHtml(column.id)}</small></span>
+            </label>`).join('')}
+        </div>
+      </section>
+      <section class="studio-organization-section studio-demographics-config">
+        <div class="studio-organization-heading"><h4>KOLOM KUSTOM (${settings.customColumns.length}/30)</h4>
+          <button class="btn-tactical" type="button" data-demographic-field-add ${settings.customColumns.length >= 30 || this.studentDemographicSettingsError ? 'disabled' : ''}>TAMBAH KOLOM KUSTOM</button>
+        </div>
+        <p class="studio-help">Nilai kolom kustom dapat diedit superadmin di sini dan anggota melalui Profil &amp; keamanan. Pilihan data divalidasi oleh server; teks/rumus/kode tidak dieksekusi.</p>
+        ${settings.customColumns.map((field) => `
+          <article class="studio-demographic-field" data-demographic-field="${escapeHtml(field.id)}">
+            <div class="admin-form-grid">
+              <label class="form-group"><span class="form-label">LABEL KOLOM</span><input class="form-input" data-demographic-field-label maxlength="80" value="${escapeHtml(field.label)}" required /></label>
+              <label class="form-group"><span class="form-label">TIPE DATA</span><select class="form-select" data-demographic-field-type>
+                ${STUDENT_CUSTOM_FIELD_TYPES.map((type) => `<option value="${type.id}" ${field.type === type.id ? 'selected' : ''}>${escapeHtml(type.label)}</option>`).join('')}
+              </select></label>
+              <label class="studio-toggle"><input type="checkbox" data-demographic-field-visible ${field.visible ? 'checked' : ''} /> TAMPILKAN DI TABEL</label>
+            </div>
+            <label class="form-group studio-demographic-field-options" data-demographic-options-for="${escapeHtml(field.id)}" ${['single_select', 'multi_select'].includes(field.type) ? '' : 'hidden'}>
+              <span class="form-label">OPSI PILIHAN (SATU PER BARIS)</span>
+              <textarea class="form-textarea" data-demographic-field-options maxlength="4096">${escapeHtml((field.options || []).join('\n'))}</textarea>
+            </label>
+            <button class="btn-tactical danger" type="button" data-demographic-field-remove="${escapeHtml(field.id)}">HAPUS KOLOM</button>
+          </article>`).join('') || '<p class="empty-state">Belum ada kolom kustom.</p>'}
+        <button class="btn-tactical primary" type="button" data-demographic-settings-save ${this.studentDemographicSettingsError ? 'disabled' : ''}>SIMPAN KOLOM STATISTIK</button>
+        <p class="auth-feedback" data-demographic-settings-feedback role="status" aria-live="polite">${escapeHtml(this.studentDemographicSettingsFeedback)}</p>
+      </section>
+      <section class="studio-organization-section studio-demographics-config">
+        <h4>NILAI KOLOM KUSTOM PER AKUN</h4>
+        <p class="studio-help">Pilih akun untuk mengisi atau mengubah nilainya. Nilai dapat dilihat pemegang capability statistik mahasiswa bila kolomnya ditampilkan.</p>
+        ${members.length ? `<label class="form-group"><span class="form-label">AKUN ANGGOTA</span><select class="form-select" data-demographic-account-select>
+          ${members.map((user) => `<option value="${escapeHtml(user.account_id)}" ${user.account_id === selectedAccount?.account_id ? 'selected' : ''}>${escapeHtml(user.name)} // ${escapeHtml(user.nim)}</option>`).join('')}
+        </select></label>` : '<p class="empty-state">Tidak ada akun anggota untuk dikelola.</p>'}
+        ${selectedAccount && settings.customColumns.length ? `
+          <div class="studio-demographic-values">
+            ${settings.customColumns.map((field) => renderCustomFieldInput(field, selectedValues[field.id], { prefix: 'studio-' })).join('')}
+          </div>
+          <button class="btn-tactical primary" type="button" data-demographic-values-save ${this.studentDemographicValuesError || this.studentDemographicSettingsError || this.studentDemographicSettingsDirty ? 'disabled' : ''}>SIMPAN NILAI AKUN</button>
+        ` : '<p class="empty-state">Buat kolom kustom terlebih dahulu untuk menambahkan nilainya.</p>'}
+        <p class="auth-feedback" data-demographic-values-feedback role="status" aria-live="polite">${escapeHtml(this.studentDemographicValuesFeedback)}</p>
+      </section>`;
+  }
+
+  renderAccountAccessPanel() {
+    const members = this.users.filter((user) => user.role !== 'superadmin');
+    const governanceAccess = this.config.content.governanceDocumentAccess;
+    const governanceCapabilities = POSITION_CAPABILITY_OPTIONS.filter(({ id }) => id.startsWith('constitution.'));
+    return `
+      <h3>AKSES ANGGOTA // PENGELOLAAN MASSAL</h3>
+      <p class="studio-help">Pilih satu atau beberapa akun anggota untuk mengubah clearance (level 1–3) dan/atau capability langsung. Capability langsung mengikuti akun dan tidak mengubah mapping posisi; mencabut capability langsung tidak mencabut capability yang masih didapat dari penugasan. Akun superadmin dikecualikan.</p>
+      ${this.usersError ? `<p class="auth-feedback" role="alert">DAFTAR AKUN TIDAK TERSEDIA: ${escapeHtml(this.usersError)}</p>` : ''}
+      <p class="auth-feedback" data-access-feedback role="status" aria-live="polite">${escapeHtml(this.accessFeedback)}</p>
+      <section class="studio-organization-section studio-access-section">
+        <h4>HAK AMANDEMEN AD/ART/GBHO</h4>
+        <p class="studio-help">Penyuntingan dan pengesahan masing-masing mensyaratkan clearance <strong>dan</strong> capability. Superadmin selalu dapat mengelola. Aturan ini disimpan bersama draft Site Studio dan berlaku setelah dipublikasikan.</p>
+        <div class="admin-form-grid">
+          ${[
+            ['edit', 'PENYUNTING DRAF'],
+            ['ratify', 'PENGESAHAN & PUBLIKASI']
+          ].map(([action, label]) => `
+            <fieldset class="studio-access-capabilities">
+              <legend>${label}</legend>
+              <label class="form-group"><span class="form-label">CLEARANCE MINIMUM</span>
+                <select class="form-select" name="governanceDocumentAccess.${action}.clearance">
+                  ${[1, 2, 3].map((level) => `
+                    <option value="${level}" ${governanceAccess[action].clearance === level ? 'selected' : ''}>Level ${level}</option>
+                  `).join('')}
+                </select>
+              </label>
+              <label class="form-group"><span class="form-label">CAPABILITY WAJIB</span>
+                <select class="form-select" name="governanceDocumentAccess.${action}.capability">
+                  ${governanceCapabilities.map((capability) => `
+                    <option value="${escapeHtml(capability.id)}" ${governanceAccess[action].capability === capability.id ? 'selected' : ''}>${escapeHtml(capability.label)}</option>
+                  `).join('')}
+                </select>
+              </label>
+            </fieldset>
+          `).join('')}
+        </div>
+        <p class="studio-help">Capability diberikan melalui bagian pengelolaan akun langsung atau pemetaan akses jabatan. Hak pengesahan dipisahkan dari hak menyunting secara default.</p>
+      </section>
+      <section class="studio-organization-section studio-access-section">
+        <div class="studio-organization-heading">
+          <h4>AKUN ANGGOTA (${members.length})</h4>
+          <div class="studio-organization-actions">
+            <button class="btn-tactical" type="button" data-access-select-all ${members.length ? '' : 'disabled'}>PILIH SEMUA ANGGOTA</button>
+            <button class="btn-tactical" type="button" data-access-clear-selection ${members.length ? '' : 'disabled'}>HAPUS PILIHAN</button>
+          </div>
+        </div>
+        <p class="studio-help" data-access-selection-count role="status">0 akun dipilih</p>
+        <div class="studio-access-account-list">
+          ${members.map((user) => {
+            const directCapabilities = POSITION_CAPABILITY_OPTIONS
+              .filter(({ id }) => user.permissions?.includes(id))
+              .map(({ label }) => label);
+            return `<label class="studio-access-account">
+              <input type="checkbox" data-access-account="${escapeHtml(user.account_id)}" />
+              <span><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.nim)} // Clearance ${user.clearance_level || 1}</small>
+                <small>Capability langsung: ${directCapabilities.length ? escapeHtml(directCapabilities.join(', ')) : 'Tidak ada'}</small>
+              </span>
+            </label>`;
+          }).join('') || '<p class="empty-state">Tidak ada akun anggota untuk dikelola.</p>'}
+        </div>
+      </section>
+      <section class="studio-organization-section studio-access-section">
+        <h4>PERUBAHAN UNTUK AKUN TERPILIH</h4>
+        <div class="admin-form-grid">
+          <label class="form-group"><span class="form-label">CLEARANCE</span>
+            <select class="form-select" name="accessClearance">
+              <option value="">Tidak mengubah clearance</option>
+              <option value="1">Level 1 — Kader</option>
+              <option value="2">Level 2 — Pengurus operasional</option>
+              <option value="3">Level 3 — Pengurus BPH</option>
+            </select>
+          </label>
+          <label class="form-group"><span class="form-label">TINDAKAN CAPABILITY LANGSUNG</span>
+            <select class="form-select" name="accessCapabilityAction">
+              <option value="grant">Berikan</option>
+              <option value="revoke">Cabut</option>
+            </select>
+          </label>
+        </div>
+        <fieldset class="studio-access-capabilities">
+          <legend>Capability yang diterapkan</legend>
+          ${POSITION_CAPABILITY_OPTIONS.map((option) => `
+            <label class="studio-access-account">
+              <input type="checkbox" data-access-capability="${escapeHtml(option.id)}" />
+              <span><strong>${escapeHtml(option.label)}</strong><small>${escapeHtml(option.description)}</small></span>
+            </label>`).join('')}
+        </fieldset>
+        <p class="studio-help">Maksimal 500 akun per perubahan. Pastikan pilihan dan tindakan sudah benar; perubahan akses berlaku pada permintaan API berikutnya.</p>
+        <button class="btn-tactical primary" type="button" data-access-bulk-save ${this.usersError || !members.length ? 'disabled' : ''}>TERAPKAN KE AKUN TERPILIH</button>
+      </section>`;
+  }
+
+  renderOrganizationPanel() {
+    const structure = this.config.content.data.organizationStructure || { people: [], terms: [] };
+    const people = structure.people || [];
+    const terms = structure.terms || [];
+    const accountOptions = (selectedId) => `
+      <option value="">Tanpa tautan akun</option>
+      ${this.users.map((user) => `
+        <option value="${escapeHtml(user.account_id)}" ${selectedId === user.account_id ? 'selected' : ''}>
+          ${escapeHtml(user.name)} // ${escapeHtml(user.membership_stage || 'Status anggota belum ditetapkan')}
+        </option>
+      `).join('')}`;
+    const field = (label, name, value, { type = 'text', maxLength = 120, required = false } = {}) => `
+      <label class="form-group"><span class="form-label">${label}</span>
+        <input class="form-input" name="${name}" type="${type}" value="${escapeHtml(value ?? '')}" ${maxLength ? `maxlength="${maxLength}"` : ''} ${required ? 'required' : ''} />
+      </label>`;
+    const select = (label, name, options) => `
+      <label class="form-group"><span class="form-label">${label}</span><select class="form-select" name="${name}">${options}</select></label>`;
+    const removeButton = (kind, id, termId = '') => `
+      <button class="btn-tactical danger" type="button" data-org-remove="${kind}" data-org-id="${escapeHtml(id)}" ${termId ? `data-org-term-id="${escapeHtml(termId)}"` : ''}>HAPUS</button>`;
+
+    return `
+      <h3>STRUKTUR ORGANISASI BERDASARKAN PERIODE</h3>
+      <p class="studio-help">Susun unit, posisi, dan penugasan secara fleksibel. Status keanggotaan tetap mengikuti akun dan tidak diturunkan dari jabatan. Jangan mengunci susunan BPH/DPA atau mengisi jabatan sebelum rujukan resmi diverifikasi. ID akun hanya untuk administrasi dan tidak diterbitkan ke publik.</p>
+      ${this.usersError ? `<p class="auth-feedback" role="alert">TAUTAN AKUN TIDAK TERSEDIA: ${escapeHtml(this.usersError)} Personel tetap dapat dicatat tanpa tautan.</p>` : ''}
+      <section class="studio-organization-section">
+        <div class="studio-organization-heading"><h4>PERSONEL</h4><button class="btn-tactical" type="button" data-org-add="person">TAMBAH PERSONEL</button></div>
+        ${people.length ? people.map((person, personIndex) => `
+          <div class="studio-organization-record">
+            <div class="studio-organization-record-heading"><strong>${escapeHtml(person.name || 'Personel baru')}</strong>${removeButton('person', person.id)}</div>
+            <div class="admin-form-grid">
+              ${field('NAMA TAMPIL', `organization.person.${personIndex}.name`, person.name, { required: true })}
+              ${select('TAUTAN AKUN (OPSIONAL)', `organization.person.${personIndex}.accountId`, accountOptions(person.accountId))}
+              <label class="studio-toggle"><input type="checkbox" name="organization.person.${personIndex}.isPublic" ${person.isPublic ? 'checked' : ''} /> TAMPILKAN NAMA DI BAGAN PUBLIK</label>
+            </div>
+          </div>
+        `).join('') : '<p class="empty-state">Belum ada personel. Personel dapat ditautkan ke akun terdaftar atau dicatat tanpa tautan akun.</p>'}
+      </section>
+      <section class="studio-organization-section">
+        <div class="studio-organization-heading"><h4>PERIODE DAN HIERARKI</h4><div class="studio-organization-actions">
+          <button class="btn-tactical" type="button" data-org-add="term">TAMBAH PERIODE KOSONG</button>
+          <button class="btn-tactical primary" type="button" data-org-template="hmif-governance">BUAT DRAFT BPH / BPD / DPA</button>
+        </div></div>
+        <p class="studio-help">Template hanya membuat unit dan posisi kosong pada periode draft. Personel, anggota biasa, struktur DPA, departemen, serta tanggal harus disesuaikan dan diverifikasi; template tidak menetapkan kewenangan atau hak akses.</p>
+        ${terms.length ? terms.map((term, termIndex) => {
+      const units = term.units || [];
+      const positions = term.positions || [];
+      const assignments = term.assignments || [];
+      const unitOptions = (selectedId, includeEmpty = false) => `
+            ${includeEmpty ? '<option value="">Tanpa induk — unit sejajar</option>' : ''}
+            ${units.map((unit) => `<option value="${escapeHtml(unit.id)}" ${selectedId === unit.id ? 'selected' : ''}>${escapeHtml(unit.name)}</option>`).join('')}`;
+      const descendantsOf = (unitId) => {
+        const descendants = new Set();
+        const collect = (parentId) => units.filter((unit) => unit.parentUnitId === parentId).forEach((unit) => {
+          if (!descendants.has(unit.id)) {
+            descendants.add(unit.id);
+            collect(unit.id);
+          }
+        });
+        collect(unitId);
+        return descendants;
+      };
+      return `
+            <div class="studio-organization-record" data-org-term="${escapeHtml(term.id)}">
+              <div class="studio-organization-record-heading"><strong>${escapeHtml(term.name || 'Periode baru')}</strong>${removeButton('term', term.id)}</div>
+              <div class="admin-form-grid">
+                ${field('NAMA PERIODE', `organization.term.${termIndex}.name`, term.name, { required: true })}
+                ${field('MULAI', `organization.term.${termIndex}.startDate`, term.startDate, { type: 'date', maxLength: 0, required: true })}
+                ${field('AKHIR (OPSIONAL)', `organization.term.${termIndex}.endDate`, term.endDate, { type: 'date', maxLength: 0 })}
+                ${select('STATUS', `organization.term.${termIndex}.status`, `
+                  <option value="draft" ${term.status === 'draft' ? 'selected' : ''}>Draft</option>
+                  <option value="active" ${term.status === 'active' ? 'selected' : ''}>Aktif</option>
+                  <option value="archived" ${term.status === 'archived' ? 'selected' : ''}>Arsip</option>`)}
+              </div>
+              <div class="studio-organization-subsection">
+                <div class="studio-organization-heading"><h5>UNIT / LEMBAGA (${units.length})</h5><button class="btn-tactical" type="button" data-org-add="unit" data-org-term-id="${escapeHtml(term.id)}">TAMBAH UNIT</button></div>
+                ${units.length ? units.map((unit, unitIndex) => {
+        const blockedParents = descendantsOf(unit.id);
+        const parents = units.filter((parent) => parent.id !== unit.id && !blockedParents.has(parent.id));
+        return `<div class="studio-organization-item">
+                    <div class="admin-form-grid">
+                      ${field('NAMA UNIT', `organization.unit.${termIndex}.${unitIndex}.name`, unit.name, { required: true })}
+                      ${select('UNIT INDUK', `organization.unit.${termIndex}.${unitIndex}.parentUnitId`, `
+                        <option value="">Tanpa induk — lembaga sejajar</option>
+                        ${parents.map((parent) => `<option value="${escapeHtml(parent.id)}" ${unit.parentUnitId === parent.id ? 'selected' : ''}>${escapeHtml(parent.name)}</option>`).join('')}`)}
+                      ${field('KODE', `organization.unit.${termIndex}.${unitIndex}.code`, unit.code, { maxLength: 32 })}
+                      ${field('DESKRIPSI', `organization.unit.${termIndex}.${unitIndex}.description`, unit.description, { maxLength: 500 })}
+                    </div>
+                    ${removeButton('unit', unit.id, term.id)}
+                  </div>`;
+      }).join('') : '<p class="empty-state">Belum ada unit. Buat lembaga sebagai unit sejajar, lalu tambahkan unit turunan bila diperlukan.</p>'}
+              </div>
+              <div class="studio-organization-subsection">
+                <div class="studio-organization-heading"><h5>POSISI (${positions.length})</h5><button class="btn-tactical" type="button" data-org-add="position" data-org-term-id="${escapeHtml(term.id)}" ${units.length ? '' : 'disabled'}>TAMBAH POSISI</button></div>
+                ${positions.length ? positions.map((position, positionIndex) => `<div class="studio-organization-item">
+                  <div class="admin-form-grid">
+                    ${field('NAMA POSISI', `organization.position.${termIndex}.${positionIndex}.title`, position.title, { required: true })}
+                    ${select('UNIT', `organization.position.${termIndex}.${positionIndex}.unitId`, unitOptions(position.unitId))}
+                    ${field('KODE', `organization.position.${termIndex}.${positionIndex}.code`, position.code, { maxLength: 32 })}
+                    <label class="form-group"><span class="form-label">KAPASITAS PEMEGANG</span><input class="form-input" name="organization.position.${termIndex}.${positionIndex}.maxOccupants" type="number" min="1" max="100" value="${position.maxOccupants || 1}" /></label>
+                    <label class="studio-toggle"><input type="checkbox" name="organization.position.${termIndex}.${positionIndex}.required" ${position.required !== false ? 'checked' : ''} /> POSISI WAJIB</label>
+                  </div>
+                  ${removeButton('position', position.id, term.id)}
+                </div>`).join('') : '<p class="empty-state">Belum ada posisi yang ditetapkan.</p>'}
+              </div>
+              <div class="studio-organization-subsection">
+                <div class="studio-organization-heading"><h5>PENUGASAN (${assignments.length})</h5><button class="btn-tactical" type="button" data-org-add="assignment" data-org-term-id="${escapeHtml(term.id)}" ${people.length && positions.length ? '' : 'disabled'}>TAMBAH PENUGASAN</button></div>
+                ${assignments.length ? assignments.map((assignment, assignmentIndex) => `<div class="studio-organization-item">
+                  <div class="admin-form-grid">
+                    ${select('PERSONEL', `organization.assignment.${termIndex}.${assignmentIndex}.personId`, people.map((person) => `<option value="${escapeHtml(person.id)}" ${assignment.personId === person.id ? 'selected' : ''}>${escapeHtml(person.name)}</option>`).join(''))}
+                    ${select('POSISI', `organization.assignment.${termIndex}.${assignmentIndex}.positionId`, positions.map((position) => `<option value="${escapeHtml(position.id)}" ${assignment.positionId === position.id ? 'selected' : ''}>${escapeHtml(position.title)}</option>`).join(''))}
+                    ${field('MULAI', `organization.assignment.${termIndex}.${assignmentIndex}.startDate`, assignment.startDate, { type: 'date', maxLength: 0, required: true })}
+                    ${field('AKHIR (OPSIONAL)', `organization.assignment.${termIndex}.${assignmentIndex}.endDate`, assignment.endDate, { type: 'date', maxLength: 0 })}
+                    ${select('JENIS', `organization.assignment.${termIndex}.${assignmentIndex}.kind`, `
+                      <option value="substantive" ${assignment.kind === 'substantive' ? 'selected' : ''}>Substantif</option>
+                      <option value="acting" ${assignment.kind === 'acting' ? 'selected' : ''}>Pelaksana tugas</option>`)}
+                  </div>
+                  ${removeButton('assignment', assignment.id, term.id)}
+                </div>`).join('') : '<p class="empty-state">Belum ada penugasan. Posisi yang belum terisi tidak akan dianggap sebagai lowongan secara otomatis.</p>'}
+              </div>
+            </div>`;
+    }).join('') : '<p class="empty-state">Belum ada periode. Struktur jabatan lama tidak dimigrasikan otomatis; tambahkan periode setelah susunan resminya diverifikasi.</p>'}
+      </section>`;
+  }
+
+  bindOrganizationEvents(form, body) {
+    const updateConfig = () => {
+      const collected = this.tryCollectConfig(form, body);
+      if (!collected) return false;
+      this.config = collected;
+      return true;
+    };
+    body.querySelectorAll('[data-org-template]').forEach((button) => button.addEventListener('click', () => {
+      if (!updateConfig()) return;
+      if (!window.confirm('Buat periode draft baru menggunakan template modular? Data personel dan penugasan tidak akan dibuat.')) return;
+      const startDate = new Date().toISOString().slice(0, 10);
+      this.config.content.data.organizationStructure.terms.push(createOrganizationDraftTemplate({
+        createId: createOrganizationId,
+        startDate
+      }));
+      this.render(body);
+      this.feedback(body, 'TEMPLATE DRAFT DIBUAT. PERIKSA NAMA PERIODE DAN TANGGAL SEBELUM MENYIMPAN.');
+    }));
+    body.querySelectorAll('[data-org-add]').forEach((button) => button.addEventListener('click', () => {
+      if (!updateConfig()) return;
+      const kind = button.dataset.orgAdd;
+      const term = this.config.content.data.organizationStructure.terms.find(({ id }) => id === button.dataset.orgTermId);
+      const today = new Date().toISOString().slice(0, 10);
+      if (kind === 'person') {
+        this.config.content.data.organizationStructure.people.push({
+          id: createOrganizationId('person'), name: '', isPublic: false
+        });
+      } else if (kind === 'term') {
+        this.config.content.data.organizationStructure.terms.push({
+          id: createOrganizationId('term'),
+          name: '',
+          startDate: today,
+          endDate: null,
+          status: 'draft',
+          units: [],
+          positions: [],
+          assignments: []
+        });
+      } else if (term && kind === 'unit') {
+        term.units.push({ id: createOrganizationId('unit'), parentUnitId: null, name: '', code: '', description: '', order: term.units.length });
+      } else if (term && kind === 'position' && term.units.length) {
+        term.positions.push({
+          id: createOrganizationId('position'), unitId: term.units[0].id, title: '', code: '',
+          maxOccupants: 1, required: true, order: term.positions.length
+        });
+      } else if (term && kind === 'assignment' && this.config.content.data.organizationStructure.people.length && term.positions.length) {
+        term.assignments.push({
+          id: createOrganizationId('assignment'),
+          personId: this.config.content.data.organizationStructure.people[0].id,
+          positionId: term.positions[0].id,
+          startDate: term.startDate,
+          endDate: null,
+          kind: 'substantive'
+        });
+      }
+      this.render(body);
+    }));
+
+    body.querySelectorAll('[data-org-remove]').forEach((button) => button.addEventListener('click', () => {
+      const { orgRemove: kind, orgId: id, orgTermId: termId } = button.dataset;
+      const prompts = {
+        person: 'Hapus personel ini dan semua penugasannya?',
+        term: 'Hapus periode ini beserta unit, posisi, dan seluruh penugasannya?',
+        unit: 'Hapus unit ini?',
+        position: 'Hapus posisi ini beserta seluruh penugasannya?',
+        assignment: 'Hapus penugasan ini?'
+      };
+      if (!window.confirm(prompts[kind] || 'Hapus data ini?')) return;
+      if (!updateConfig()) return;
+      const structure = this.config.content.data.organizationStructure;
+      const term = structure.terms.find(({ id: termKey }) => termKey === termId);
+      if (kind === 'person') {
+        structure.people = structure.people.filter((person) => person.id !== id);
+        structure.terms.forEach((entry) => {
+          entry.assignments = entry.assignments.filter((assignment) => assignment.personId !== id);
+        });
+      } else if (kind === 'term') {
+        structure.terms = structure.terms.filter((entry) => entry.id !== id);
+      } else if (term && kind === 'unit') {
+        if (term.units.some((unit) => unit.parentUnitId === id) || term.positions.some((position) => position.unitId === id)) {
+          return this.feedback(body, 'UNIT MASIH MEMILIKI UNIT TURUNAN ATAU POSISI. HAPUS KETERKAITAN TERSEBUT TERLEBIH DAHULU.');
+        }
+        term.units = term.units.filter((unit) => unit.id !== id);
+      } else if (term && kind === 'position') {
+        term.positions = term.positions.filter((position) => position.id !== id);
+        term.assignments = term.assignments.filter((assignment) => assignment.positionId !== id);
+      } else if (term && kind === 'assignment') {
+        term.assignments = term.assignments.filter((assignment) => assignment.id !== id);
+      }
+      this.render(body);
+    }));
+
+    body.querySelectorAll('[name^="organization.person."][name$=".accountId"]').forEach((selectElement) => {
+      selectElement.addEventListener('change', () => {
+        const selectedUser = this.users.find(({ account_id: accountId }) => accountId === selectElement.value);
+        const nameInput = selectElement.closest('.studio-organization-record')?.querySelector('[name$=".name"]');
+        if (selectedUser && nameInput) nameInput.value = selectedUser.name;
+      });
+    });
   }
 
   renderPortalRecordsPanel() {
@@ -658,7 +1849,7 @@ export class SiteStudio {
       <h4>${kind === 'project' ? 'SHOWCASE PROYEK' : kind === 'alumni' ? 'DIREKTORI ALUMNI' : 'LOWONGAN & MAGANG'}</h4>
       <div class="admin-record-list">
         ${records.map((record) => `
-          <div class="admin-record-row" data-portal-record-row="${escapeHtml(record.id)}">
+          <div class="admin-record-row studio-portal-record-row" data-portal-record-row="${escapeHtml(record.id)}">
             <span><strong>${escapeHtml(recordLabel(kind, record))}</strong><small>${escapeHtml(record.review_status.toUpperCase())}${record.submitter_account_id ? ` // DIAJUKAN ${escapeHtml(record.created_by)}` : ''} // ${escapeHtml(record.updated_at || record.created_at)}</small>
               ${record.review_note ? `<small>CATATAN: ${escapeHtml(record.review_note)}</small>` : ''}
               ${(record.history || []).length ? `<small>RIWAYAT: ${(record.history || []).slice(0, 3).map((entry) => `${escapeHtml(entry.action)} · ${escapeHtml(entry.actor_nim)}`).join(' | ')}</small>` : ''}
@@ -744,19 +1935,19 @@ export class SiteStudio {
         <p>Kelola materi melalui tautan HTTPS atau PDF berizin. FAQ dapat berisi jawaban langsung tanpa URL/PDF. PDF maksimal 20 MB.</p>
         <div class="admin-record-list">
           ${this.knowledgeFiles.map((file) => `
-            <div class="admin-record-row" data-knowledge-file-row>
+            <div class="admin-record-row studio-knowledge-file-row" data-knowledge-file-row>
               <span><strong>${escapeHtml(file.original_name)}</strong><small>${(file.size / 1024).toFixed(1)} KB // SHA-256 ${escapeHtml(file.sha256.slice(0, 12))}...</small></span>
               <button class="btn-tactical" type="button" data-knowledge-file-delete="${escapeHtml(file.id)}">HAPUS PDF</button>
             </div>
           `).join('') || '<p>Belum ada PDF akademik yang diunggah.</p>'}
         </div>
-        <div class="admin-form-grid">
+        <div class="admin-form-grid studio-knowledge-upload-grid">
           <label class="form-group"><span class="form-label">UNGGAH DOKUMEN PDF</span><input class="form-input" type="file" accept="application/pdf" data-knowledge-file-input /></label>
           <button class="btn-tactical" type="button" data-upload-knowledge-file>UNGGAH PDF</button>
         </div>
         <div class="admin-record-list">
           ${resources.map((resource) => `
-            <article class="admin-record-row">
+            <article class="admin-record-row studio-knowledge-record-row">
               <span><strong>${escapeHtml(resource.title)}</strong><small>${escapeHtml(resource.course || 'Umum')} // Semester ${escapeHtml(resource.semester || 'Semua')}${resource.academicYear ? ` // ${escapeHtml(resource.academicYear)}` : ''}${resource.lecturer ? ` // ${escapeHtml(resource.lecturer)}` : ''}${resource.examType ? ` // ${escapeHtml(resource.examType)}` : ''} // ${escapeHtml(kinds.find(([kind]) => kind === resource.kind)?.[1] || resource.kind)} // ${resource.fileId ? 'PDF' : 'LINK'} // ${resource.published === false ? 'DRAFT' : 'DITAYANGKAN'}</small></span>
               <label class="studio-toggle"><input type="checkbox" data-knowledge-published="${escapeHtml(resource.id)}" ${resource.published === false ? '' : 'checked'} /> Publik</label>
               <button class="btn-tactical" type="button" data-knowledge-edit="${escapeHtml(resource.id)}">UBAH</button>
@@ -2963,7 +4154,10 @@ export class SiteStudio {
 
   collectConfig(form) {
     const config = structuredClone(this.config);
-    for (const input of form.querySelectorAll('[name^="color."]')) config.theme.colors[input.name.slice(6)] = input.value;
+    for (const input of form.querySelectorAll('[name^="color."]')) {
+      const [, palette, key] = input.name.split('.');
+      config.theme[palette === 'light' ? 'lightColors' : 'colors'][key] = input.value;
+    }
     config.theme.fonts = { body: form.elements['font.body'].value, heading: form.elements['font.heading'].value, mono: form.elements['font.mono'].value };
     config.theme.typeScale = Number(form.elements.typeScale.value);
     config.theme.shape = form.elements.shape.value;
@@ -2978,6 +4172,10 @@ export class SiteStudio {
     config.theme.heroImage = form.elements.heroImage.value;
     config.theme.contrast = form.elements.contrast.value;
     config.theme.motion = form.elements.motion.checked;
+    config.theme.dust = {
+      density: Number(form.elements.dustDensity.value),
+      opacity: Number(form.elements.dustOpacity.value)
+    };
     config.pages = config.pages.map((page) => ({
       ...page,
       visible: form.elements[`visible.${page.id}`].checked,
@@ -2988,6 +4186,63 @@ export class SiteStudio {
     config.content.heroActions = config.content.heroActions.map((_, index) => form.elements[`heroAction.${index}`].value);
     config.content.statLabels = Object.fromEntries(Object.keys(config.content.statLabels).map((key) => [key, form.elements[`statLabel.${key}`].value]));
     config.content.sectionDescriptions = Object.fromEntries(Object.keys(config.content.sectionDescriptions).map((key) => [key, form.elements[`description.${key}`].value]));
+    config.content.governanceDocumentAccess = Object.fromEntries(['edit', 'ratify'].map((action) => [
+      action,
+      {
+        clearance: Number(form.elements[`governanceDocumentAccess.${action}.clearance`].value),
+        capability: form.elements[`governanceDocumentAccess.${action}.capability`].value
+      }
+    ]));
+    config.content.customPages = (this.config.content.customPages || []).map((page, pageIndex) => ({
+      ...page,
+      title: form.elements[`customPage.${pageIndex}.title`].value,
+      slug: form.elements[`customPage.${pageIndex}.slug`].value,
+      description: form.elements[`customPage.${pageIndex}.description`].value,
+      layout: form.elements[`customPage.${pageIndex}.layout`].value,
+      visible: form.elements[`customPage.${pageIndex}.visible`].checked,
+      blocks: page.blocks.map((block, blockIndex) => {
+        const type = form.elements[`customPage.${pageIndex}.block.${blockIndex}.type`].value;
+        const nextBlock = {
+          type,
+          title: form.elements[`customPage.${pageIndex}.block.${blockIndex}.title`].value,
+          body: form.elements[`customPage.${pageIndex}.block.${blockIndex}.body`].value
+        };
+        if (type === 'notice') {
+          nextBlock.tone = form.elements[`customPage.${pageIndex}.block.${blockIndex}.tone`]?.value || 'info';
+        }
+        return nextBlock;
+      })
+    }));
+    config.content.siteMapNodes = (this.config.content.siteMapNodes || []).map((node) => {
+      if (node.type === 'group') {
+        return {
+          ...node,
+          title: form.elements[`siteMapNode.${node.id}.title`]?.value ?? node.title
+        };
+      }
+      return {
+        ...node,
+        parentId: form.elements[`siteMapParent.${node.id}`]?.value ?? node.parentId ?? ''
+      };
+    });
+    const siteMapNodeIds = new Set(config.content.siteMapNodes.map(({ id }) => id));
+    for (const page of config.content.customPages) {
+      const id = `custom-${page.id}`;
+      if (!siteMapNodeIds.has(id)) {
+        config.content.siteMapNodes.push({ id, type: 'page', parentId: '' });
+        siteMapNodeIds.add(id);
+      }
+    }
+    config.content.sidebarOrder = [...form.querySelectorAll('[data-sidebar-order-item]')]
+      .map((item) => item.dataset.sidebarOrderItem);
+    const pagesById = new Map(config.pages.map((page) => [page.id, page]));
+    config.pages = config.content.sidebarOrder
+      .filter((id) => pagesById.has(id))
+      .map((id) => pagesById.get(id));
+    const customPagesByNavId = new Map(config.content.customPages.map((page) => [`custom-${page.id}`, page]));
+    config.content.customPages = config.content.sidebarOrder
+      .filter((id) => customPagesByNavId.has(id))
+      .map((id) => customPagesByNavId.get(id));
     const identity = { ...config.content.data.identity };
     if (form.elements['identity.logo']) identity.logo = form.elements['identity.logo'].value;
     for (const key of Object.keys(identity)) {
@@ -3006,6 +4261,34 @@ export class SiteStudio {
         throw new Error(`JSON koleksi ${key} tidak valid.`);
       }
     }));
+    const organizationStructure = structuredClone(this.config.content.data.organizationStructure || { people: [], terms: [] });
+    const readOrganizationFields = (records, prefix, fields) => records.forEach((record, index) => {
+      for (const [field, type] of Object.entries(fields)) {
+        const control = form.elements[`${prefix}.${index}.${field}`];
+        if (!control) continue;
+        if (type === 'checkbox') record[field] = control.checked;
+        else if (type === 'number') record[field] = Number(control.value);
+        else if (type === 'nullable') record[field] = control.value || null;
+        else record[field] = control.value;
+      }
+    });
+    readOrganizationFields(organizationStructure.people, 'organization.person', {
+      name: 'text', accountId: 'nullable', isPublic: 'checkbox'
+    });
+    readOrganizationFields(organizationStructure.terms, 'organization.term', {
+      name: 'text', startDate: 'text', endDate: 'nullable', status: 'text'
+    });
+    organizationStructure.terms.forEach((term, termIndex) => {
+      readOrganizationFields(term.units, `organization.unit.${termIndex}`, {
+        parentUnitId: 'nullable', name: 'text', code: 'text', description: 'text'
+      });
+      readOrganizationFields(term.positions, `organization.position.${termIndex}`, {
+        unitId: 'text', title: 'text', code: 'text', maxOccupants: 'number', required: 'checkbox'
+      });
+      readOrganizationFields(term.assignments, `organization.assignment.${termIndex}`, {
+        personId: 'text', positionId: 'text', startDate: 'text', endDate: 'nullable', kind: 'text'
+      });
+    });
     config.content.data = {
       identity,
       visionMission: {
@@ -3014,8 +4297,11 @@ export class SiteStudio {
         sambutanKahim: welcome
       },
       departments: structuredClone(this.config.content.data.departments || []),
+      organizationStructure,
       generations: structuredClone(this.config.content.data.generations || []),
       operators: structuredClone(this.config.content.data.operators || []),
+      campusMap: collectCampusMapForm(form, config.content.data.campusMap || { navigationLabel: 'Peta Kampus', summary: '', publicWidgetVisible: true, defaultZoom: 17, campuses: [] }),
+      universityOrganization: collectUniversityOrganizationForm(form, this.config.content.data.universityOrganization || { structures: [] }),
       ...collections
     };
     for (const page of config.pages) {
@@ -3034,35 +4320,41 @@ export class SiteStudio {
   }
 
   updateContrast(form) {
-    const colors = Object.fromEntries([...form.querySelectorAll('[name^="color."]')].map((input) => [input.name.slice(6), input.value]));
-    const bodyRatio = contrastRatio(colors.text, colors.background);
-    const secondaryRatio = contrastRatio(colors.textMuted, colors.background);
-    const accentRatio = contrastRatio(colors.accent, colors.background);
-    const accentAltRatio = contrastRatio(colors.accentAlt, colors.background);
-    const statusRatios = [colors.danger, colors.success, colors.info].map((color) => contrastRatio(color, colors.background));
+    const readPalette = (mode) => Object.fromEntries(
+      [...form.querySelectorAll(`[name^="color.${mode}."]`)]
+        .map((input) => [input.name.slice(`color.${mode}.`.length), input.value])
+    );
+    const palettes = [
+      ['GELAP', getPaletteContrast(readPalette('dark'))],
+      ['CERAH', getPaletteContrast(readPalette('light'))]
+    ];
     const status = form.querySelector('[data-contrast-check]');
-    const textPass = bodyRatio >= 4.5 && secondaryRatio >= 4.5;
-    const colorPass = [accentRatio, accentAltRatio, ...statusRatios].every((ratio) => ratio >= 3);
-    status.textContent = `Teks ${bodyRatio.toFixed(2)}:1 / sekunder ${secondaryRatio.toFixed(2)}:1 ${textPass ? 'OK' : 'RENDAH (4.5:1)'} // aksen ${[accentRatio, accentAltRatio, ...statusRatios].map((ratio) => `${ratio.toFixed(2)}:1`).join(' / ')} ${colorPass ? 'OK' : 'RENDAH (3:1)'}`;
-    status.dataset.pass = String(textPass && colorPass);
+    status.textContent = palettes.map(([label, contrast]) => (
+      `${label} · TEKS ${contrast.text.toFixed(2)}:1 / SEKUNDER ${contrast.secondary.toFixed(2)}:1 / AKSEN-STATUS ${contrast.accents.map((ratio) => `${ratio.toFixed(2)}:1`).join(' · ')} ${contrast.pass ? 'OK' : 'RENDAH'}`
+    )).join(' // ');
+    status.dataset.pass = String(palettes.every(([, contrast]) => contrast.pass));
   }
 
   feedback(body, message) {
-    const target = body.querySelector('[data-studio-feedback]');
+    const target = body?.querySelector('[data-studio-feedback]');
     if (target) target.textContent = message;
   }
 
   async saveDraft(form, body) {
     const collected = this.tryCollectConfig(form, body);
     if (!collected) return false;
+    const invalidDustInput = [...form.querySelectorAll('[name="dustDensity"], [name="dustOpacity"]')]
+      .find((input) => !input.checkValidity());
+    if (invalidDustInput) {
+      invalidDustInput.reportValidity();
+      this.feedback(body, `NILAI DUST HARUS BERUPA BILANGAN BULAT 10–${DUST_PERCENT_MAX}%.`);
+      return false;
+    }
     this.config = collected;
-    const bodyContrast = contrastRatio(this.config.theme.colors.text, this.config.theme.colors.background);
-    const secondaryContrast = contrastRatio(this.config.theme.colors.textMuted, this.config.theme.colors.background);
-    const accentContrast = contrastRatio(this.config.theme.colors.accent, this.config.theme.colors.background);
-    const accentAltContrast = contrastRatio(this.config.theme.colors.accentAlt, this.config.theme.colors.background);
-    const statusContrast = [this.config.theme.colors.danger, this.config.theme.colors.success, this.config.theme.colors.info].map((color) => contrastRatio(color, this.config.theme.colors.background));
-    if (bodyContrast < 4.5 || secondaryContrast < 4.5 || accentContrast < 3 || accentAltContrast < 3 || statusContrast.some((ratio) => ratio < 3)) {
-      this.feedback(body, 'PERIKSA KONTRAS: TEKS MEMERLUKAN 4.5:1 DAN AKSEN/STATUS 3:1.');
+    const darkContrast = getPaletteContrast(this.config.theme.colors);
+    const lightContrast = getPaletteContrast(this.config.theme.lightColors);
+    if (!darkContrast.pass || !lightContrast.pass) {
+      this.feedback(body, 'PERIKSA KONTRAS PADA PALET GELAP DAN CERAH: TEKS MEMERLUKAN 4.5:1 DAN AKSEN/STATUS 3:1.');
       return false;
     }
     const result = await this.api.saveSiteDraft(this.config, this.revisionId);
@@ -3101,16 +4393,38 @@ export class SiteStudio {
     if (!result.ok) return this.feedback(body, result.error);
     this.previewing = false;
     const published = await this.api.getSiteConfig();
-    if (published.ok) await this.applyConfig(published.data.config, { preview: false });
-    this.feedback(body, 'PERUBAHAN DIPUBLIKASIKAN.');
-    await this.open();
+    await this.applyConfig(published.ok ? published.data.config : this.config, { preview: false });
+    this.revisionId = result.data.revision?.id || this.revisionId;
+    this.returnToStudio();
+    this.updateActionState(body);
+    this.feedback(body, published.ok
+      ? 'PERUBAHAN DIPUBLIKASIKAN.'
+      : `PERUBAHAN SUDAH DIPUBLIKASIKAN, NAMUN KONFIGURASI TERBIT GAGAL DIMUAT ULANG: ${published.error}`);
+    return true;
   }
 
-  async cancelPreview() {
-    if (!this.previewing) return;
-    this.previewing = false;
-    const published = await this.api.getSiteConfig();
-    if (published.ok) await this.applyConfig(published.data.config, { preview: false });
+  async cancelPreview(body) {
+    if (!this.previewing) {
+      this.returnToStudio();
+      this.updateActionState(body || this.getContainer?.());
+      return true;
+    }
+    try {
+      const published = await this.api.getSiteConfig();
+      if (!published.ok) {
+        this.feedback(body, `PRATINJAU MASIH AKTIF; VERSI TERBIT GAGAL DIMUAT: ${published.error}`);
+        return false;
+      }
+      await this.applyConfig(published.data.config, { preview: false });
+      this.previewing = false;
+      this.returnToStudio();
+      this.updateActionState(body || this.getContainer?.());
+      return true;
+    } catch (error) {
+      console.error('[SITE STUDIO] Gagal memulihkan versi terbit:', error);
+      this.feedback(body, `PRATINJAU MASIH AKTIF; PEMULIHAN GAGAL: ${error.message || 'Terjadi kesalahan.'}`);
+      return false;
+    }
   }
 
   async uploadAsset(event, body) {

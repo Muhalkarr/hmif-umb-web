@@ -1,220 +1,270 @@
-/**
- * E-Voting Frontend Module
- * HMIF UMB PRTS Tactical Terminal — Pemilihan Ketua Himpunan / Ketua Umum
- *
- * API References:
- * - GET  /api/voting/polls           → Daftar semua pemilihan
- * - GET  /api/voting/polls/:id       → Detail pemilihan + kandidat + status voting
- * - POST /api/voting/polls/:id/vote  → Kirim suara (candidate_id)
- */
-
 const API_BASE = '/api/voting';
 
-// ============================
-// 1. Fetch Data
-// ============================
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+}[character]));
 
-/**
- * Mengambil daftar semua pemilihan (termasuk draft jika clearance >= 3)
- */
+const request = async (endpoint, { method = 'GET', body } = {}) => {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        method,
+        credentials: 'same-origin',
+        headers: body === undefined ? { Accept: 'application/json' } : {
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Permintaan pemungutan suara gagal (HTTP ${response.status}).`);
+    return data;
+};
+
+const dateLabel = (value) => {
+    if (!value) return 'Tanggal belum ditentukan';
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.valueOf()) ? 'Tanggal belum ditentukan'
+        : date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const safeImageUrl = (value) => {
+    const url = String(value || '').trim();
+    if (url.startsWith('/') && !url.startsWith('//')) return escapeHtml(url);
+    try {
+        const parsed = new URL(url);
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '/assets/silhouette_male.jpg';
+    } catch {
+        return '/assets/silhouette_male.jpg';
+    }
+};
+
 export async function fetchPolls(includeDraft = false) {
-  const url = includeDraft
-    ? `${API_BASE}/polls?includeDraft=true`
-    : `${API_BASE}/polls`;
-  const response = await fetch(url, { credentials: 'include' });
-  if (!response.ok) throw new Error('Gagal memuat daftar pemilihan');
-  return response.json();
+    const data = await request(`/polls${includeDraft ? '?includeDraft=true' : ''}`);
+    const polls = Array.isArray(data) ? data : data.polls;
+    return Array.isArray(polls) ? polls : [];
 }
 
-/**
- * Mengambil detail satu pemilihan (kandidat, status voting, hasil)
- */
 export async function fetchPoll(pollId) {
-  const response = await fetch(`${API_BASE}/polls/${pollId}`, { credentials: 'include' });
-  if (!response.ok) throw new Error('Pemilihan tidak ditemukan');
-  return response.json();
+    return request(`/polls/${encodeURIComponent(pollId)}`);
 }
 
-/**
- * Mengirim suara ke kandidat yang dipilih
- * @param {string} pollId - ID pemilihan
- * @param {string} candidateId - ID kandidat yang dipilih
- */
 export async function castVote(pollId, candidateId) {
-  const response = await fetch(`${API_BASE}/polls/${pollId}/vote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ candidate_id: candidateId })
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Gagal mengirim suara');
-  }
-  return response.json();
+    return request(`/polls/${encodeURIComponent(pollId)}/vote`, {
+        method: 'POST',
+        body: { candidate_id: candidateId }
+    });
 }
 
-// ============================
-// 2. Render Functions
-// ============================
+export async function createPoll(poll) {
+    return request('/polls', { method: 'POST', body: poll });
+}
 
-/**
- * Render daftar pemilihan ke dalam container
- * @param {HTMLElement} container - Elemen DOM target
- */
-export async function renderPollList(container) {
-  container.innerHTML = '<p>Memuat pemilihan...</p>';
-  try {
-    const polls = await fetchPolls();
-    if (polls.length === 0) {
-      container.innerHTML = '<p>Belum ada pemilihan yang dibuat.</p>';
-      return;
-    }
-    container.innerHTML = polls.map(poll => `
-      <article class="poll-card" data-poll-id="${poll.id}">
-        <h3>${poll.title}</h3>
-        <p>${poll.description || '—'}</p>
-        <div class="poll-meta">
-          <span>Tanggal: ${new Date(poll.start_date).toLocaleDateString('id-ID')} s/d ${new Date(poll.end_date).toLocaleDateString('id-ID')}</span>
-          ${poll.status === 'active' ? '<span class="status-active">Sedang Berlangsung</span>' : ''}
+export async function updatePoll(pollId, updates) {
+    return request(`/polls/${encodeURIComponent(pollId)}`, { method: 'PUT', body: updates });
+}
+
+export async function addCandidate(pollId, candidate) {
+    return request(`/polls/${encodeURIComponent(pollId)}/candidates`, { method: 'POST', body: candidate });
+}
+
+const renderPollAdminControls = (poll) => `
+  <details class="voting-admin-controls">
+    <summary>Kelola status dan kandidat</summary>
+    <form class="voting-admin-form" data-voting-poll-status data-poll-id="${escapeHtml(poll.id)}">
+      <label class="form-group"><span class="form-label">STATUS PEMILIHAN</span>
+        <select class="form-select" name="status">
+          <option value="draft" ${poll.status === 'draft' ? 'selected' : ''}>Draft</option>
+          <option value="active" ${poll.status === 'active' ? 'selected' : ''}>Aktif</option>
+          <option value="closed" ${poll.status === 'closed' ? 'selected' : ''}>Ditutup</option>
+        </select>
+      </label>
+      <button class="btn-tactical" type="submit">SIMPAN STATUS</button>
+      <p class="auth-feedback" data-voting-form-feedback role="status"></p>
+    </form>
+    <form class="voting-admin-form" data-voting-candidate-create data-poll-id="${escapeHtml(poll.id)}">
+      <h4>Tambah kandidat</h4>
+      <div class="admin-form-grid">
+        <label class="form-group"><span class="form-label">NOMOR URUT</span><input class="form-input" name="candidate_number" type="number" min="1" step="1" required></label>
+        <label class="form-group"><span class="form-label">NAMA KANDIDAT</span><input class="form-input" name="candidate_name" maxlength="160" required></label>
+        <label class="form-group"><span class="form-label">NIM (OPSIONAL)</span><input class="form-input" name="candidate_nim" maxlength="32"></label>
+        <label class="form-group"><span class="form-label">URL FOTO (OPSIONAL)</span><input class="form-input" name="image_url" type="url" maxlength="2000"></label>
+      </div>
+      <label class="form-group"><span class="form-label">VISI & MISI</span><textarea class="form-textarea" name="vision_mission" maxlength="3000"></textarea></label>
+      <button class="btn-tactical primary" type="submit">TAMBAH KANDIDAT</button>
+      <p class="auth-feedback" data-voting-form-feedback role="status"></p>
+    </form>
+  </details>`;
+
+const renderPollCard = (poll, canManage) => `
+  <article class="poll-card" data-poll-id="${escapeHtml(poll.id)}">
+    <h3>${escapeHtml(poll.title)}</h3>
+    <p>${escapeHtml(poll.description || 'Tidak ada keterangan tambahan.')}</p>
+    <div class="poll-meta">
+      <span>${escapeHtml(dateLabel(poll.start_date))} — ${escapeHtml(dateLabel(poll.end_date))}</span>
+      <span class="poll-status poll-status--${escapeHtml(poll.status)}">${poll.status === 'active' ? 'Sedang berlangsung' : poll.status === 'closed' ? 'Ditutup' : 'Draft'}</span>
+      <span>${Array.isArray(poll.candidates) ? poll.candidates.length : 0} kandidat</span>
+    </div>
+    <button class="btn-tactical primary" type="button" data-poll-open="${escapeHtml(poll.id)}">LIHAT DETAIL & PILIH</button>
+    ${canManage ? renderPollAdminControls(poll) : ''}
+  </article>`;
+
+const renderCreatePollForm = () => `
+  <details class="voting-admin-create">
+    <summary>Buat pemilihan baru</summary>
+    <form class="voting-admin-form" data-voting-poll-create>
+      <label class="form-group"><span class="form-label">JUDUL PEMILIHAN</span><input class="form-input" name="title" maxlength="180" required></label>
+      <label class="form-group"><span class="form-label">KETERANGAN</span><textarea class="form-textarea" name="description" maxlength="3000"></textarea></label>
+      <div class="admin-form-grid">
+        <label class="form-group"><span class="form-label">MULAI</span><input class="form-input" name="start_date" type="date" required></label>
+        <label class="form-group"><span class="form-label">SELESAI</span><input class="form-input" name="end_date" type="date" required></label>
+      </div>
+      <p class="form-help">Sebaiknya tambahkan seluruh kandidat sebelum mengaktifkan pemilihan.</p>
+      <button class="btn-tactical primary" type="submit">BUAT PEMILIHAN</button>
+      <p class="auth-feedback" data-voting-form-feedback role="status"></p>
+    </form>
+  </details>`;
+
+const bindAdminForms = (container, canManage) => {
+    if (!canManage) return;
+    container.querySelector('[data-voting-poll-create]')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const feedback = form.querySelector('[data-voting-form-feedback]');
+        const values = Object.fromEntries(new FormData(form));
+        try {
+            await createPoll({ ...values, status: 'draft' });
+            await renderPollList(container, { canManage });
+            container.querySelector('[data-voting-feedback]').textContent = 'Pemilihan berhasil dibuat. Tambahkan kandidat sebelum dibuka.';
+        } catch (error) {
+            feedback.textContent = error.message;
+        }
+    });
+
+    container.querySelectorAll('[data-voting-poll-status]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const feedback = form.querySelector('[data-voting-form-feedback]');
+            try {
+                await updatePoll(form.dataset.pollId, { status: new FormData(form).get('status') });
+                await renderPollList(container, { canManage });
+                container.querySelector('[data-voting-feedback]').textContent = 'Status pemilihan berhasil diperbarui.';
+            } catch (error) {
+                feedback.textContent = error.message;
+            }
+        });
+    });
+
+    container.querySelectorAll('[data-voting-candidate-create]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const feedback = form.querySelector('[data-voting-form-feedback]');
+            const values = Object.fromEntries(new FormData(form));
+            values.candidate_number = Number(values.candidate_number);
+            try {
+                await addCandidate(form.dataset.pollId, values);
+                await renderPollList(container, { canManage });
+                container.querySelector('[data-voting-feedback]').textContent = 'Kandidat berhasil ditambahkan.';
+            } catch (error) {
+                feedback.textContent = error.message;
+            }
+        });
+    });
+};
+
+export async function renderPollList(container, { canManage = false } = {}) {
+    if (!container) return;
+    container.dataset.votingCanManage = String(canManage);
+    container.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat daftar pemilihan...</p>';
+    try {
+        const polls = await fetchPolls(canManage);
+        if (!container.isConnected) return;
+        container.innerHTML = `
+      <section class="workspace-voting" aria-labelledby="workspace-voting-title">
+        <header class="workspace-voting-heading">
+          <span class="section-tag cyan">SECURE VOTING TERMINAL</span>
+          <h2 id="workspace-voting-title">Pemungutan suara</h2>
+          <p>Pilih satu kandidat pada setiap pemilihan aktif. Suara tercatat secara rahasia.</p>
+        </header>
+        ${canManage ? renderCreatePollForm() : ''}
+        <p class="workspace-voting-feedback" data-voting-feedback role="status" aria-live="polite"></p>
+        <div class="poll-list" data-voting-poll-list>
+          ${polls.length ? polls.map((poll) => renderPollCard(poll, canManage)).join('')
+                : `<p class="workspace-voting-empty">${canManage ? 'Belum ada pemilihan. Buat pemilihan baru untuk menambahkan kandidat.' : 'Belum ada pemilihan yang tersedia.'}</p>`}
         </div>
-        <a href="/voting/polls/${poll.id}" class="poll-link">Lihat Detail & Pilih</a>
-      </article>
-    `).join('');
-  } catch (err) {
-    container.innerHTML = `<p style="color: #ff6b6b;">❌ ${err.message}</p>`;
-  }
-}
+      </section>`;
 
-/**
- * Render halaman detail pemilihan (kandidat + voting)
- * @param {HTMLElement} container - Elemen DOM target
- * @param {string} pollId - ID pemilihan
- */
-export async function renderPollDetail(container, pollId) {
-  container.innerHTML = '<p>Memuat detail pemilihan...</p>';
-  try {
-    const { poll, user_vote, results } = await fetchPoll(pollId);
-
-    // Status voting
-    const isClosed = poll.status === 'closed';
-    const hasVoted = Boolean(user_vote);
-    const canVote = !hasVoted && !isClosed;
-
-    // Render kandidat
-    const candidatesHtml = (poll.candidates || []).map(candidate => {
-      const voted = user_vote?.candidate_id === candidate.id;
-      return `
-        <article class="candidate-card ${voted ? 'voted' : ''}" data-candidate-id="${candidate.id}">
-          <div class="candidate-img">
-            <img src="${candidate.image_url || '/assets/silhouette_male.jpg'}"
-                 alt="${candidate.candidate_name}"
-                 onerror="this.onerror=null;this.src='/assets/silhouette_male.jpg'">
-          </div>
-          <div class="candidate-info">
-            <h3>No. ${candidate.candidate_number} — ${candidate.candidate_name}</h3>
-            <p>${candidate.vision_mission || '—'}</p>
-          </div>
-          <button class="vote-btn ${voted ? 'disabled' : ''}"
-                  ${!canVote ? 'disabled' : ''}
-                  data-candidate-id="${candidate.id}"
-                  data-poll-id="${pollId}">
-            ${voted ? 'Sudah Disukai!' : 'Beri Suara'}
-          </button>
-        </article>
-      `;
-    }).join('') || '<p>Tidak ada kandidat yang terdaftar.</p>';
-
-    // Render hasil (jika boleh dilihat)
-    let resultsHtml = '';
-    if (canVote) {
-      resultsHtml = '<p>Hasil akan tampil setelah Anda memberikan suara atau saat pemilihan ditutup.</p>';
-    } else if (isClosed || hasVoted) {
-      resultsHtml = `
-        <h4>Hasil Akhir</h4>
-        <ul class="results-list">
-          ${Object.entries(results || {}).map(([candidateId, data]) => `
-            <li>
-              <strong>${data.votes} suara</strong> — ${data.candidate_name}
-            </li>
-          `).join('')}
-        </ul>
-      `;
+        container.querySelectorAll('[data-poll-open]').forEach((button) => {
+            button.addEventListener('click', () => renderPollDetail(container, button.dataset.pollOpen, { canManage }));
+        });
+        bindAdminForms(container, canManage);
+    } catch (error) {
+        if (!container.isConnected) return;
+        container.innerHTML = `<p class="workspace-data-error" role="alert">${escapeHtml(error.message)}</p>`;
     }
-
-    container.innerHTML = `
-      <section class="poll-header">
-        <h2>${poll.title}</h2>
-        <p>${poll.description || ''}</p>
-        <div class="poll-info">
-          <span>Tanggal: ${new Date(poll.start_date).toLocaleDateString('id-ID')} — ${new Date(poll.end_date).toLocaleDateString('id-ID')}</span>
-          ${isClosed ? '<span class="status-closed">Ditutup</span>' : '<span class="status-active">Sedang Berlangsung</span>'}
-        </div>
-      </section>
-
-      <section class="candidates-section">
-        ${candidatesHtml}
-      </section>
-
-      ${user_vote ? `
-        <div class="vote-receipt">
-          <h4>✅ Terima kasih!</h4>
-          <p>Suara Anda telah dicatat dan diamankan secara rahasia.</p>
-          <p><strong>Receipt ID:</strong> ${user_vote.receipt_id || '—'}</p>
-        </div>
-      ` : ''}
-
-      ${resultsHtml}
-    `;
-  } catch (err) {
-    container.innerHTML = `<p style="color: #ff6b6b;">❌ ${err.message}</p>`;
-  }
 }
 
-// ============================
-// 3. Event Handlers
-// ============================
+export async function renderPollDetail(container, pollId, { canManage = container?.dataset.votingCanManage === 'true' } = {}) {
+    if (!container) return;
+    container.innerHTML = '<p class="workspace-feature-loading" role="status">Memuat detail pemilihan...</p>';
+    try {
+        const { poll, user_vote: userVote, results } = await fetchPoll(pollId);
+        if (!container.isConnected || !poll) return;
+        const canVote = poll.status === 'active' && !userVote;
+        const candidates = Array.isArray(poll.candidates) ? poll.candidates : [];
+        const resultRows = Array.isArray(results?.results) ? results.results : [];
+        const resultsMarkup = results
+            ? `<section class="voting-results" aria-labelledby="voting-results-title"><h3 id="voting-results-title">Hasil sementara/akhir</h3>
+          <p>${Number(results.total_votes || 0)} suara tercatat</p>
+          <ol class="results-list">${resultRows.map((item) => `<li><span><strong>No. ${escapeHtml(item.candidate_number)} — ${escapeHtml(item.candidate_name)}</strong><small>${Number(item.percentage || 0)}%</small></span><b>${Number(item.vote_count || 0)} suara</b></li>`).join('')}</ol>
+        </section>`
+            : '<p class="workspace-voting-results-note">Hasil akan tersedia setelah Anda memilih atau pemilihan ditutup.</p>';
+        container.innerHTML = `
+      <section class="workspace-voting workspace-voting-detail" aria-labelledby="workspace-voting-detail-title">
+        <button class="workspace-text-action" type="button" data-poll-back>← KEMBALI KE DAFTAR</button>
+        <header class="workspace-voting-heading poll-header">
+          <span class="section-tag cyan">PEMILIHAN // ${poll.status === 'active' ? 'BERLANGSUNG' : poll.status === 'closed' ? 'DITUTUP' : 'DRAFT'}</span>
+          <h2 id="workspace-voting-detail-title">${escapeHtml(poll.title)}</h2>
+          <p>${escapeHtml(poll.description || '')}</p>
+          <div class="poll-info"><span>${escapeHtml(dateLabel(poll.start_date))} — ${escapeHtml(dateLabel(poll.end_date))}</span></div>
+        </header>
+        ${userVote ? `<div class="vote-receipt" role="status"><h3>Suara Anda telah tercatat</h3><p>Suara disimpan secara rahasia.</p><p><strong>ID tanda terima:</strong> ${escapeHtml(userVote.id || userVote.receipt_id || 'Tercatat')}</p></div>` : ''}
+        <section class="candidates-section" aria-label="Daftar kandidat">
+          ${candidates.length ? candidates.map((candidate) => {
+            const selected = userVote?.candidate_id === candidate.id;
+            return `<article class="candidate-card ${selected ? 'voted' : ''}" data-candidate-id="${escapeHtml(candidate.id)}">
+              <img class="candidate-img" src="${safeImageUrl(candidate.image_url)}" alt="Foto ${escapeHtml(candidate.candidate_name)}" loading="lazy">
+              <div class="candidate-info"><h3>No. ${escapeHtml(candidate.candidate_number)} — ${escapeHtml(candidate.candidate_name)}</h3><p>${escapeHtml(candidate.vision_mission || 'Visi dan misi belum dicantumkan.')}</p></div>
+              <button class="vote-btn" type="button" data-voting-cast-vote="${escapeHtml(candidate.id)}" ${canVote ? '' : 'disabled'}>${selected ? 'PILIHAN ANDA' : canVote ? 'BERI SUARA' : userVote ? 'SUDAH MEMILIH' : 'PEMILIHAN TIDAK AKTIF'}</button>
+            </article>`;
+        }).join('') : '<p class="workspace-voting-empty">Belum ada kandidat dalam pemilihan ini.</p>'}
+        </section>
+        <p class="workspace-voting-feedback" data-vote-feedback role="status" aria-live="polite"></p>
+        ${resultsMarkup}
+      </section>`;
 
-/**
- * Menangani klik tombol "Beri Suara"
- */
-export async function handleVoteClick(event) {
-  const button = event.target;
-  const candidateId = button.dataset.candidateId;
-  const pollId = button.dataset.pollId;
-
-  if (!candidateId || !pollId) return;
-
-  // Tampilkan konfirmasi
-  if (!confirm('Apakah Anda yakin ingin memberikan suara kepada kandidat ini?')) return;
-
-  // Non-aktif tombol sementara
-  button.disabled = true;
-  button.textContent = 'Mengirim...';
-
-  try {
-    const receipt = await castVote(pollId, candidateId);
-    // Tampilkan notifikasi sukses
-    alert('Suara Anda berhasil dicatat!\nReceipt ID: ' + (receipt.receipt_id || '—'));
-    // Refresh halaman atau tutup modal
-    location.reload(); // atau tutup modal
-  } catch (err) {
-    // Kembalikan tombol state
-    button.disabled = false;
-    button.textContent = 'Beri Suara';
-    alert('Gagal mengirim suara: ' + err.message);
-  }
-}
-
-/**
- * Inisialisasi event listeners untuk halaman voting
- */
-export function initVotingEvents() {
-  // Event delegation untuk tombol vote
-  document.body.addEventListener('click', (event) => {
-    if (event.target.classList.contains('vote-btn')) {
-      event.preventDefault();
-      handleVoteClick(event);
+        container.querySelector('[data-poll-back]')?.addEventListener('click', () => renderPollList(container, { canManage }));
+        container.querySelectorAll('[data-voting-cast-vote]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                if (!window.confirm('Apakah Anda yakin ingin memberikan suara kepada kandidat ini? Pilihan tidak dapat diubah.')) return;
+                button.disabled = true;
+                const feedback = container.querySelector('[data-vote-feedback]');
+                feedback.textContent = 'Mengirim suara...';
+                try {
+                    await castVote(poll.id, button.dataset.votingCastVote);
+                    await renderPollDetail(container, poll.id, { canManage });
+                    container.querySelector('[data-vote-feedback]').textContent = 'Suara berhasil dicatat.';
+                } catch (error) {
+                    button.disabled = false;
+                    feedback.textContent = error.message;
+                }
+            });
+        });
+    } catch (error) {
+        if (!container.isConnected) return;
+        container.innerHTML = `<section class="workspace-voting"><button class="workspace-text-action" type="button" data-poll-back>← KEMBALI KE DAFTAR</button><p class="workspace-data-error" role="alert">${escapeHtml(error.message)}</p></section>`;
+        container.querySelector('[data-poll-back]')?.addEventListener('click', () => renderPollList(container, { canManage }));
     }
-  });
 }

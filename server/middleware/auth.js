@@ -41,8 +41,27 @@ export const createAuthMiddleware = ({ db, jwt, jwtSecret, cookieName, isProduct
     next();
   };
 
-  const hasAcademicCuratorAccess = (user) => user?.role === 'superadmin'
-    || (Array.isArray(user?.permissions) && user.permissions.includes('academic_curate'));
+  const hasCapability = (user, capability) => user?.role === 'superadmin'
+    || user?.permissions?.includes(capability)
+    || user?.position_capabilities?.includes(capability);
+
+  const requireCapability = (capability) => (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Silakan masuk untuk melanjutkan.' });
+    if (!hasCapability(req.user, capability)) return res.status(403).json({ error: `Capability ${capability} diperlukan.` });
+    next();
+  };
+
+  const requireClearanceOrCapability = (minLevel, capability) => (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Silakan masuk untuk melanjutkan.' });
+    if (req.user.role === 'superadmin') return next();
+    if (minLevel >= 4) return res.status(403).json({ error: 'Akses superadmin diperlukan.' });
+    if (req.user.clearance_level >= minLevel || hasCapability(req.user, capability)) return next();
+    return res.status(403).json({
+      error: `Diperlukan clearance level ${minLevel} atau capability ${capability}.`
+    });
+  };
+
+  const hasAcademicCuratorAccess = (user) => hasCapability(user, 'academic_curate');
 
   const requireAcademicCurator = (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Silakan masuk untuk melanjutkan.' });
@@ -58,16 +77,12 @@ export const createAuthMiddleware = ({ db, jwt, jwtSecret, cookieName, isProduct
     next();
   };
 
-  const isPortfolioReviewer = (user) => user?.role === 'superadmin'
-    || user?.permissions?.includes('academic_curate')
-    || user?.permissions?.includes('portfolio_review')
-    || (user?.clearance_level >= 2 && /iptek|riset|research|litbang/i.test(`${user.division || ''} ${user.role_title || ''}`));
+  const isPortfolioReviewer = (user) => hasCapability(user, 'academic_curate')
+    || hasCapability(user, 'portfolio_review');
 
   const requirePortfolioReviewer = (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Silakan masuk untuk melanjutkan.' });
-    if (!isPortfolioReviewer(req.user)) {
-      return res.status(403).json({ error: 'Peer review hanya tersedia untuk kurator atau pengurus IPTEK/Riset.' });
-    }
+    if (!isPortfolioReviewer(req.user)) return res.status(403).json({ error: 'Capability kurasi akademik atau peer review diperlukan.' });
     next();
   };
 
@@ -84,6 +99,6 @@ export const createAuthMiddleware = ({ db, jwt, jwtSecret, cookieName, isProduct
     next();
   };
 
-  return { authenticateToken, requireAuth, requireSuperadmin, requireAcademicCurator, requireAcademicModerator, requirePortfolioReviewer, requireClearance, isPortfolioReviewer };
+  return { authenticateToken, requireAuth, requireSuperadmin, requireAcademicCurator, requireAcademicModerator, requirePortfolioReviewer, requireClearance, requireClearanceOrCapability, requireCapability, hasCapability, isPortfolioReviewer };
 };
 

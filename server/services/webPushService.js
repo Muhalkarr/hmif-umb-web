@@ -20,10 +20,8 @@ export const createWebPushService = (db) => {
     const keys = webpush.generateVAPIDKeys();
     vapidPublicKey = keys.publicKey;
     vapidPrivateKey = keys.privateKey;
-    console.warn('[WebPush] VAPID keys tidak ditemukan di env. Keys sementara di-generate:');
-    console.warn(`[WebPush] VAPID_PUBLIC_KEY=${vapidPublicKey}`);
-    console.warn(`[WebPush] VAPID_PRIVATE_KEY=${vapidPrivateKey}`);
-    console.warn('[WebPush] Simpan keys di atas ke .env agar subscription tidak hilang saat restart!');
+    console.warn('[WebPush] VAPID keys tidak ditemukan; keys sementara dibuat dan tidak akan bertahan setelah restart.');
+    console.warn('[WebPush] Konfigurasikan VAPID_PUBLIC_KEY dan VAPID_PRIVATE_KEY agar subscription tetap berlaku.');
   }
 
   webpush.setVapidDetails(

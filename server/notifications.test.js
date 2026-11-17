@@ -80,6 +80,7 @@ test('notifications are private, preference-controlled, and created for workflow
     task: true,
     submission: true,
     tutoring: true,
+    meeting: true,
     deadline_days: 3,
     tutoring_reminder_hours: 24
   });

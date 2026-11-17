@@ -1,8 +1,37 @@
 
-import test from 'node:test';
+import os from 'node:os';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { db } from '../server/db.js';
-import { FULL_CONSTITUTION_DATA } from '../src/scripts/constitutionData.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { CONSTITUTION_DOCUMENT_METADATA, FULL_CONSTITUTION_DATA } from '../src/scripts/constitutionData.js';
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const testDatabaseDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hmif-governance-test-'));
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_FILE = path.join(testDatabaseDirectory, 'database.sqlite');
+process.env.INITIAL_ADMIN_NIM = 'governance-test-admin';
+process.env.INITIAL_ADMIN_PASSWORD = 'governance-test-password-2026';
+const { db } = await import('../server/db.js');
+
+after(() => {
+  db.close();
+  fs.rmSync(testDatabaseDirectory, { recursive: true, force: true });
+});
+
+test('official constitution metadata identifies the ratified source without inventing its exact date', () => {
+  const pdfPath = path.join(projectRoot, 'Draft Amandemen AD & ART + GBHO.pdf');
+  const pdf = fs.readFileSync(pdfPath);
+
+  assert.equal(CONSTITUTION_DOCUMENT_METADATA.status, 'Disahkan melalui MUBES');
+  assert.equal(CONSTITUTION_DOCUMENT_METADATA.ratifiedYear, 2026);
+  assert.equal(CONSTITUTION_DOCUMENT_METADATA.ratifiedAt, null);
+  assert.equal(CONSTITUTION_DOCUMENT_METADATA.sourceUrl, '/api/site/documents/constitution');
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.equal(createHash('sha256').update(pdf).digest('hex').toUpperCase(), CONSTITUTION_DOCUMENT_METADATA.sourceSha256);
+});
 
 test('1. Constitution Data Integrity (AD/ART HMIF UMB)', () => {
   assert.equal(FULL_CONSTITUTION_DATA.length, 28, 'Total chapters must be exactly 28');

@@ -4,6 +4,7 @@ const apiTarget = process.env.HMIF_API_TARGET || 'http://localhost:3001';
 
 export default defineConfig({
   server: {
+    host: '0.0.0.0',
     port: 5173,
     proxy: {
       '/api': {

@@ -7,7 +7,7 @@ import { decryptPrivateText, encryptPrivateText, validateAspirationSubmission, A
 
 export function registerOperationsRoutes(app, ctx) {
   const {
-    db, requireAuth, requireClearance, requireSuperadmin, authenticateToken,
+    db, requireAuth, requireClearance, requireCapability, hasCapability, requireSuperadmin, authenticateToken,
     auditAdminMutation, createUserNotification, eventRegistrationLimiter,
     aspirationLimiter, aspirationTrackingLimiter, ASPIRATION_ENCRYPTION_KEY,
     encryptEventTicketToken, decryptEventTicketToken
@@ -16,11 +16,17 @@ export function registerOperationsRoutes(app, ctx) {
   // --- PROGRAM KERJA ---
   app.get('/api/proker', (req, res) => {
     const programs = db.getAllProker();
-    if (req.user?.clearance_level >= 2) return res.json(programs);
+    if (hasCapability(req.user, 'finance.manage') || hasCapability(req.user, 'proker_lpj.view')) {
+      return res.json(programs);
+    }
     res.json(programs.map(({ budget_allocated, budget_spent, lpj_notes, ...pub }) => pub));
   });
 
   app.post('/api/proker', requireClearance(2), async (req, res) => {
+    if (['budget_allocated', 'budget_spent', 'lpj_notes'].some((field) => Object.hasOwn(req.body || {}, field))
+      && !hasCapability(req.user, 'finance.manage')) {
+      return res.status(403).json({ error: 'Capability finance.manage diperlukan untuk mengubah data keuangan atau LPJ.' });
+    }
     const validationError = ctx.validateProker ? ctx.validateProker(req.body) : null;
     if (validationError) return res.status(400).json({ error: validationError });
     const newProker = db.createProker(req.body);
@@ -39,6 +45,10 @@ export function registerOperationsRoutes(app, ctx) {
   });
 
   app.put('/api/proker/:id', requireClearance(2), async (req, res) => {
+    if (['budget_allocated', 'budget_spent', 'lpj_notes'].some((field) => Object.hasOwn(req.body || {}, field))
+      && !hasCapability(req.user, 'finance.manage')) {
+      return res.status(403).json({ error: 'Capability finance.manage diperlukan untuk mengubah data keuangan atau LPJ.' });
+    }
     const allowedFields = [
       'title', 'division', 'category', 'status', 'date_start', 'date_end',
       'target_participants', 'kpi_indicator', 'lpj_notes', 'budget_allocated'
@@ -64,7 +74,7 @@ export function registerOperationsRoutes(app, ctx) {
     });
   });
 
-  app.get('/api/proker/lpj-summary', requireClearance(3), (req, res) => {
+  app.get('/api/proker/lpj-summary', requireCapability('proker_lpj.view'), (req, res) => {
     const prokerList = db.getAllProker();
     const completed = prokerList.filter((p) => p.status === 'Selesai');
     const totalBudget = prokerList.reduce((s, p) => s + (p.budget_allocated || 0), 0);
@@ -254,8 +264,8 @@ export function registerOperationsRoutes(app, ctx) {
   });
 
   // --- DELEGASI ---
-  app.get('/api/delegations', authenticateToken, (req, res) => {
-    if (req.user.clearance_level >= 3 || req.user.role === 'superadmin') return res.json(db.getAllDelegations());
+  app.get('/api/delegations', requireAuth, (req, res) => {
+    if (hasCapability(req.user, 'delegations.manage')) return res.json(db.getAllDelegations());
     res.json(db.getDelegationsByAccount(req.user.account_id));
   });
 
@@ -266,7 +276,7 @@ export function registerOperationsRoutes(app, ctx) {
     res.status(201).json(delegation);
   });
 
-  app.put('/api/delegations/:id/status', requireClearance(3), (req, res) => {
+  app.put('/api/delegations/:id/status', requireCapability('delegations.manage'), (req, res) => {
     const { status, mandate_letter_number, approved_budget, notes, clawback_warning } = req.body;
     const updated = db.updateDelegationStatus(req.params.id, { status, mandate_letter_number, approved_budget, notes, clawback_warning });
     if (!updated) return res.status(404).json({ error: 'Delegasi tidak ditemukan.' });
@@ -286,7 +296,7 @@ export function registerOperationsRoutes(app, ctx) {
     try { res.json({ ok: true, data: db.getPublicRdpAgendas() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
-  app.put('/api/aspirations/:id/rdp-agenda', requireClearance(3), (req, res) => {
+  app.put('/api/aspirations/:id/rdp-agenda', requireCapability('aspirations.manage'), (req, res) => {
     const { is_rdp_agenda, rdp_notes, rdp_scheduled_at } = req.body;
     const updated = db.setAspirationRdpAgenda(req.params.id, { is_rdp_agenda, rdp_notes, rdp_scheduled_at });
     if (!updated) return res.status(404).json({ error: 'Aspirasi tidak ditemukan.' });
@@ -294,7 +304,7 @@ export function registerOperationsRoutes(app, ctx) {
   });
 
   // GET /api/aspirations
-  app.get('/api/aspirations', requireClearance(3), (req, res) => {
+  app.get('/api/aspirations', requireCapability('aspirations.manage'), (req, res) => {
     const aspirations = db.getAllAspirations().map((aspiration) => ({
       ...aspiration,
       message: decryptPrivateText(aspiration.message, ASPIRATION_ENCRYPTION_KEY),
@@ -340,8 +350,8 @@ export function registerOperationsRoutes(app, ctx) {
     res.json({ aspiration: { ...status, bph_response: decryptPrivateText(status.bph_response, ASPIRATION_ENCRYPTION_KEY) } });
   });
 
-  // PUT /api/aspirations/:id/respond (Clearance Level >= 3: BPH & Kahim)
-  app.put('/api/aspirations/:id/respond', requireClearance(3), (req, res) => {
+  // PUT /api/aspirations/:id/respond
+  app.put('/api/aspirations/:id/respond', requireCapability('aspirations.manage'), (req, res) => {
     const { response, status } = req.body || {};
     if (typeof response !== 'string' || !response.trim() || response.length > 3000) {
       return res.status(400).json({ error: 'Tanggapan BPH wajib diisi dan maksimal 3000 karakter.' });

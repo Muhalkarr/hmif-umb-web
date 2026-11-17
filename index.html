@@ -23,61 +23,74 @@
   <!-- Master Styles -->
   <link rel="stylesheet" href="/src/styles/index.css" />
   <link rel="stylesheet" href="/src/styles/eVoting.css" />
+  <link rel="stylesheet" href="/src/styles/siteStudio.css" />
 </head>
 
 <body>
+  <aside id="security-incident-notice" class="security-incident-notice" data-status="incident" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <div class="security-incident-notice-content">
+      <strong data-security-notice-label></strong>
+      <p data-security-notice-message></p>
+      <a data-security-notice-link target="_blank" rel="noopener noreferrer" hidden>PANTAU PEMBARUAN</a>
+    </div>
+  </aside>
   <!-- Ambient Scanlines & Canvas Dust Background -->
   <div class="scanlines"></div>
   <canvas id="canvas-dust"></canvas>
   <div class="global-bg-wrapper"></div>
 
   <div class="app-content">
-    <!-- PRTS Top Navigation Command Bar -->
-    <header class="prts-topbar">
-      <div class="prts-topbar-inner">
-        <a href="#dashboard" class="prts-brand">
-          <img src="/assets/hmif_umb_logo.jpg" alt="Logo HMIF UMB" class="prts-brand-logo" />
-          <div class="prts-brand-text">
-            <div class="prts-brand-title">
-              HMIF <span class="highlight">UMB</span>
+    <div class="prts-sticky-header">
+      <!-- PRTS Top Navigation Command Bar -->
+      <header class="prts-topbar">
+        <div class="prts-topbar-inner">
+          <a href="#dashboard" class="prts-brand">
+            <img src="/assets/hmif_umb_logo.jpg" alt="Logo HMIF UMB" class="prts-brand-logo" />
+            <div class="prts-brand-text">
+              <div class="prts-brand-title">
+                HMIF <span class="highlight">UMB</span>
+              </div>
+              <div class="prts-brand-sub">PRTS-CORE // SEC_04</div>
             </div>
-            <div class="prts-brand-sub">PRTS-CORE // SEC_04</div>
-          </div>
-        </a>
+          </a>
 
-        <!-- Right Utilities -->
-        <div class="prts-utilities">
-          <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" type="button" aria-label="Tutup navigasi" aria-controls="prts-sidebar" aria-expanded="true" title="Tutup navigasi">☰</button>
-          <button id="auth-action-btn" class="btn-tactical" type="button">AKSES KHUSUS</button>
-          <button id="logout-action-btn" class="btn-tactical" type="button" hidden>KELUAR</button>
-          <div id="prts-status-badge" class="prts-status-badge" title="Status koneksi ke server PRTS API (Port 3001)">
-            <span class="status-dot"></span>
-            <span id="prts-status-text">SYSTEM: ONLINE</span>
+          <!-- Right Utilities -->
+          <div class="prts-utilities">
+            <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" type="button" aria-label="Tutup navigasi" aria-controls="prts-sidebar" aria-expanded="true" title="Tutup navigasi">☰</button>
+            <button id="auth-action-btn" class="btn-tactical" type="button">AKSES KHUSUS</button>
+            <button id="logout-action-btn" class="btn-tactical" type="button" hidden>KELUAR</button>
+            <div id="prts-status-badge" class="prts-status-badge" title="Status koneksi ke server PRTS API (Port 3001)">
+              <span class="status-dot"></span>
+              <span id="prts-status-text">SYSTEM: ONLINE</span>
+            </div>
+            <button class="theme-toggle-btn" type="button" data-theme-toggle aria-label="Beralih ke tema gelap" title="Beralih ke tema gelap">
+              <span aria-hidden="true">☾</span><span class="theme-toggle-label">TEMA GELAP</span>
+            </button>
+            <button id="sound-toggle-btn" class="sound-toggle-btn" type="button" aria-pressed="true" aria-label="Matikan efek suara taktis" title="Nyalakan/Matikan Efek Suara Taktis">
+              <span>🔊</span> AUDIO: ON
+            </button>
+            <div id="prts-clock-display" class="prts-clock">--:--:-- WIB</div>
           </div>
-          <button id="sound-toggle-btn" class="sound-toggle-btn" type="button" aria-pressed="true" aria-label="Matikan efek suara taktis" title="Nyalakan/Matikan Efek Suara Taktis">
-            <span>🔊</span> AUDIO: ON
-          </button>
-          <div id="prts-clock-display" class="prts-clock">--:--:-- WIB</div>
         </div>
-      </div>
-    </header>
+      </header>
 
-    <!-- Sub-header Telemetry Ribbon -->
-    <div class="telemetry-ribbon">
-      <div class="ribbon-left">
-        <span>LOC: <strong>UNIVERSITAS MAYASARI BAKTI [TASIKMALAYA]</strong></span>
-                <span id="clearance-ribbon">SECURITY: PUBLIC ACCESS</span>
-        <span>FACULTY: <strong>FTIK // PRODI TEKNIK INFORMATIKA</strong></span>
-      </div>
-      <div class="ribbon-right">
-        <span class="hazard-strip"></span>
-        <span>RHODES ISLAND // HMIF DIVISION // VER 4.2.0</span>
+      <!-- Sub-header Telemetry Ribbon -->
+      <div class="telemetry-ribbon">
+        <div class="ribbon-left">
+          <span>LOC: <strong>UNIVERSITAS MAYASARI BAKTI [TASIKMALAYA]</strong></span>
+          <span id="clearance-ribbon">SECURITY: PUBLIC ACCESS</span>
+          <span>FACULTY: <strong>FTIK // PRODI TEKNIK INFORMATIKA</strong></span>
+        </div>
+        <div class="ribbon-right">
+          <span class="hazard-strip"></span>
+        </div>
       </div>
     </div>
 
     <aside id="prts-sidebar" class="prts-sidebar" aria-label="Navigasi situs">
-      <div class="sidebar-section-label">DIREKTORI SISTEM</div>
-      <nav class="prts-nav" aria-label="Navigasi Utama">
+      <details class="sidebar-section" data-sidebar-section="system" open>
+        <summary id="sidebar-system-heading" class="sidebar-section-label">DIREKTORI SISTEM</summary>
+        <nav id="prts-nav" class="prts-nav" aria-label="Navigasi Utama" aria-labelledby="sidebar-system-heading">
         <button class="nav-link active" data-tab="dashboard"><span class="nav-idx">01</span><span>DASHBOARD</span></button>
         <button class="nav-link" data-tab="vision"><span class="nav-idx">02</span><span>VISI & MISI</span></button>
         <button class="nav-link" data-tab="knowledge"><span class="nav-idx">03</span><span>PUSAT AKADEMIK</span></button>
@@ -92,9 +105,25 @@
         <button class="nav-link" data-tab="doctrine"><span class="nav-idx">12</span><span>AD/ART & GBHO</span></button>
         <button class="nav-link" data-tab="intel"><span class="nav-idx">13</span><span>BERITA & INTEL</span></button>
         <button class="nav-link" data-tab="commlink"><span class="nav-idx">14</span><span>ASPIRASI & KONTAK</span></button>
-      </nav>
-      <div class="sidebar-section-label">DEPARTEMEN ORGANISASI</div>
-      <nav id="sidebar-departments" class="sidebar-departments" aria-label="Pilih departemen pada bagan"></nav>
+        <button class="nav-link" data-tab="campus-map"><span class="nav-idx">15</span><span>PETA KAMPUS</span></button>
+        <button class="nav-link" data-tab="site-map"><span class="nav-idx">16</span><span>PETA NAVIGASI SITUS</span></button>
+        <button class="nav-link" data-tab="university-organization"><span class="nav-idx">17</span><span>STRUKTUR UNIVERSITAS</span></button>
+        </nav>
+      </details>
+      <details class="sidebar-section" data-sidebar-section="departments">
+        <summary id="sidebar-departments-heading" class="sidebar-section-label">DEPARTEMEN ORGANISASI</summary>
+        <nav id="sidebar-departments" class="sidebar-departments" aria-label="Pilih departemen pada bagan" aria-labelledby="sidebar-departments-heading"></nav>
+      </details>
+      <section id="sidebar-campus-map-widget" class="sidebar-map-widget" aria-labelledby="sidebar-campus-map-title">
+        <div class="sidebar-map-widget-heading">
+          <div><span class="section-tag cyan">CAMPUS ATLAS</span><h2 id="sidebar-campus-map-title">PETA KAMPUS</h2></div>
+          <span class="sidebar-map-widget-count" aria-label="Jumlah kampus"><span id="sidebar-campus-map-campus-count">0</span> SITE</span>
+        </div>
+        <div id="sidebar-campus-map" class="sidebar-campus-map" role="img" aria-label="Peta interaktif ringkas kampus"></div>
+        <p id="sidebar-campus-map-empty" class="campus-map-empty" hidden></p>
+        <p id="sidebar-campus-map-summary" class="sidebar-map-summary" aria-live="polite">Peta kampus belum dikonfigurasi.</p>
+        <button class="btn-tactical sidebar-map-open" type="button" data-open-campus-map>JELAJAHI PETA <span aria-hidden="true">→</span></button>
+      </section>
       <div class="sidebar-status"><span class="status-dot"></span><span id="sidebar-status-text">SYSTEM: ONLINE</span></div>
     </aside>
     <button id="sidebar-dismiss" class="sidebar-dismiss" type="button" aria-label="Tutup navigasi" tabindex="-1" hidden></button>
@@ -726,7 +755,7 @@
           <div class="aspirasi-form-panel">
             <div style="margin-bottom: 1.5rem;">
               <span class="section-tag" style="margin-bottom: 0.35rem;">TRANSMISSION UPLINK</span>
-              <h3 style="font-family: var(--font-title); font-size: 1.35rem; color: #fff;">
+              <h3 style="font-family: var(--font-title); font-size: 1.35rem; color: var(--ak-text-primary);">
                 Kirim Aspirasi Mahasiswa
               </h3>
             </div>
@@ -819,6 +848,67 @@
           </div>
         </div>
       </section>
+
+      <section id="section-campus-map" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag cyan">CAMPUS ATLAS // PUBLIC GUIDE</div>
+          <h2 class="section-title">PETA KAMPUS DAN FASILITAS</h2>
+          <p id="campus-map-summary" class="section-desc">Jelajahi lokasi, gedung, lantai, dan fasilitas kampus.</p>
+        </div>
+        <div class="campus-map-stats" aria-label="Ringkasan peta">
+          <div><span>KAMPUS</span><strong id="campus-map-campus-count">0</strong></div>
+          <div><span>GEDUNG</span><strong id="campus-map-building-count">0</strong></div>
+          <div><span>LANTAI TERPETAKAN</span><strong id="campus-map-floor-count">0</strong></div>
+        </div>
+        <div class="campus-map-toolbar">
+          <label class="form-group"><span class="form-label">KAMPUS</span><select id="campus-map-campus" class="form-select" aria-label="Pilih kampus"></select></label>
+          <label class="form-group"><span class="form-label">GEDUNG</span><select id="campus-map-building" class="form-select" aria-label="Pilih gedung"></select></label>
+          <label class="form-group"><span class="form-label">LANTAI</span><select id="campus-map-floor" class="form-select" aria-label="Pilih lantai"></select></label>
+          <div class="campus-map-layer-switch" role="group" aria-label="Lapisan peta">
+            <button class="btn-tactical" type="button" data-campus-map-layer="outdoor" aria-pressed="true">PETA GEOGRAFIS</button>
+            <button class="btn-tactical" type="button" data-campus-map-layer="indoor" aria-pressed="false">DENAH DALAM</button>
+          </div>
+        </div>
+        <section id="campus-map-outdoor-panel" class="campus-map-view-panel" aria-label="Peta geografi kampus">
+          <div id="campus-map-outdoor" class="campus-map-outdoor"></div>
+          <p id="campus-map-outdoor-empty" class="campus-map-empty" hidden></p>
+        </section>
+        <section id="campus-map-indoor-panel" class="campus-map-view-panel" aria-label="Denah dalam gedung" hidden>
+          <div class="campus-map-floor-heading">
+            <div><span class="section-tag gold">INDOOR FLOORPLAN</span><h3 id="campus-map-floor-title">Pilih lantai</h3></div>
+            <div class="campus-map-floor-tools">
+              <span id="campus-map-scale">—</span>
+              <button class="btn-tactical" id="campus-map-zoom-out" type="button" aria-label="Perkecil denah">−</button>
+              <button class="btn-tactical" id="campus-map-zoom-in" type="button" aria-label="Perbesar denah">+</button>
+            </div>
+          </div>
+          <div id="campus-map-floorplan" class="campus-map-floorplan"></div>
+          <p id="campus-map-floorplan-empty" class="campus-map-empty" hidden></p>
+          <div class="campus-map-floor-footer">
+            <span class="campus-map-scale-bar"><i aria-hidden="true"></i><span id="campus-map-scale-bar">—</span></span>
+            <div id="campus-map-legend" class="campus-map-legend" aria-label="Legenda peta" hidden></div>
+          </div>
+          <div id="campus-map-feature-details" class="campus-map-feature-details" role="status" hidden></div>
+        </section>
+      </section>
+
+      <section id="section-site-map" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag cyan">SITE DIRECTORY // INFORMATION ARCHITECTURE</div>
+          <h2 class="section-title">PETA NAVIGASI SITUS</h2>
+          <p class="section-desc">Telusuri kelompok, halaman, dan hubungan induk konten HMIF UMB. Berbeda dari menu sidebar dan peta geografis kampus.</p>
+        </div>
+        <div id="site-navigation-map" class="site-navigation-map" aria-live="polite"></div>
+      </section>
+
+      <section id="section-university-organization" class="content-section" data-layout="wide">
+        <div class="section-header">
+          <div class="section-tag gold">UNIVERSITY GOVERNANCE // OFFICIAL UNITS</div>
+          <h2 class="section-title">STRUKTUR ORGANISASI UNIVERSITAS</h2>
+          <p class="section-desc">Bagan unit resmi universitas berdasarkan periode berlaku, terpisah dari kepengurusan HMIF.</p>
+        </div>
+        <div id="university-organization-content" class="university-organization-content" aria-live="polite"></div>
+      </section>
     </main>
 
     <!-- PRTS Global Modal Dialog -->
@@ -908,7 +998,7 @@
   </button>
 
   <section id="member-workspace" class="member-workspace" aria-label="Dashboard anggota HMIF" hidden>
-    <aside class="workspace-sidebar">
+    <aside id="workspace-sidebar" class="workspace-sidebar">
       <a class="workspace-brand" href="#dashboard" data-workspace-public>
         <img src="/assets/hmif_umb_logo.jpg" alt="" />
         <span><strong>HMIF UMB</strong><small data-workspace-audience>RUANG ANGGOTA</small></span>
@@ -920,7 +1010,15 @@
     <main class="workspace-main">
       <header class="workspace-topbar">
         <div><span class="section-tag cyan" data-workspace-audience>RUANG ANGGOTA</span><h1 id="workspace-page-title">Dashboard</h1></div>
-        <button class="btn-tactical" type="button" data-workspace-profile>PROFIL & AKUN</button>
+        <div class="workspace-topbar-actions">
+          <button class="btn-tactical workspace-sidebar-toggle" type="button" data-workspace-sidebar-toggle aria-controls="workspace-sidebar" aria-expanded="true" aria-label="Sembunyikan navigasi" title="Sembunyikan navigasi">
+            <span aria-hidden="true">☰</span><span data-sidebar-toggle-label>MENU</span>
+          </button>
+          <button class="theme-toggle-btn" type="button" data-theme-toggle aria-label="Beralih ke tema gelap" title="Beralih ke tema gelap">
+            <span aria-hidden="true">☾</span><span class="theme-toggle-label">TEMA GELAP</span>
+          </button>
+          <button class="btn-tactical" type="button" data-workspace-profile>PROFIL & AKUN</button>
+        </div>
       </header>
       <div id="workspace-content" class="workspace-content"></div>
     </main>

@@ -15,13 +15,13 @@ function isValidReceiptFile(buffer, mimeType) {
 }
 
 export function registerFinanceRoutes(app, ctx) {
-  const { db, requireClearance, auditAdminMutation, receiptUpload, RECEIPT_DIR, multer } = ctx;
+  const { db, requireCapability, auditAdminMutation, receiptUpload, RECEIPT_DIR, multer } = ctx;
 
-  app.get('/api/ledger', requireClearance(3), (_req, res) => {
+  app.get('/api/ledger', requireCapability('finance.manage'), (_req, res) => {
     res.json(db.getFinancialLedger());
   });
 
-  app.get('/api/ledger/receipts/:id', requireClearance(3), (req, res) => {
+  app.get('/api/ledger/receipts/:id', requireCapability('finance.manage'), (req, res) => {
     const receipt = db.read().financial_ledger
       .map((t) => t.receipt)
       .find((item) => item?.id === req.params.id);
@@ -32,7 +32,7 @@ export function registerFinanceRoutes(app, ctx) {
     fs.createReadStream(filePath).pipe(res);
   });
 
-  app.post('/api/ledger', requireClearance(3), (req, res, next) => {
+  app.post('/api/ledger', requireCapability('finance.manage'), (req, res, next) => {
     receiptUpload.single('receipt')(req, res, (error) => {
       if (!error) return next();
       res.status(error instanceof multer.MulterError ? 413 : 400).json({ error: error.message });

@@ -149,7 +149,7 @@ export const registerAuthRoutes = (app, context) => {
 
   app.put('/api/notification-preferences', requireAuth, (req, res) => {
     const body = req.body || {};
-    const booleanPreferences = ['deadline', 'task', 'submission', 'tutoring'];
+    const booleanPreferences = ['deadline', 'task', 'submission', 'tutoring', 'meeting'];
     if (booleanPreferences.some((key) => body[key] !== undefined && typeof body[key] !== 'boolean')
       || (body.deadline_days !== undefined && ![1, 3, 7, 14, 30].includes(body.deadline_days))
       || (body.tutoring_reminder_hours !== undefined && ![0, 1, 24, 48].includes(body.tutoring_reminder_hours))

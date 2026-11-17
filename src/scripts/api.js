@@ -46,7 +46,7 @@ class PRTSApiClient {
   async _request(method, endpoint, body = null) {
     const headers = { Accept: 'application/json' };
     const opts = { method, headers, credentials: 'same-origin' };
-    if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+    if (body && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
@@ -77,6 +77,8 @@ class PRTSApiClient {
     const result = await this._request('POST', '/auth/login', { nim, password });
     if (result.ok) {
       this.currentUser = result.data.user;
+      const profile = await this._request('GET', '/auth/me');
+      if (profile.ok && profile.data.authenticated) this.currentUser = profile.data.user;
     }
     return result;
   }
@@ -353,12 +355,60 @@ class PRTSApiClient {
     return this._request('GET', '/admin/stats');
   }
 
+  async getPositionAccess() {
+    return this._request('GET', '/admin/position-access');
+  }
+
+  async updatePositionCapabilities(termId, positionId, capabilities) {
+    return this._request('PUT', '/admin/position-access', {
+      term_id: termId,
+      position_id: positionId,
+      capabilities
+    });
+  }
+
+  async getStudentDemographics() {
+    return this._request('GET', '/admin/student-demographics');
+  }
+
+  async getStudentDemographicSettings() {
+    return this._request('GET', '/admin/student-demographics/settings');
+  }
+
+  async updateStudentDemographicSettings(settings) {
+    return this._request('PUT', '/admin/student-demographics/settings', { settings });
+  }
+
+  async getStudentDemographicCustomValues() {
+    return this._request('GET', '/admin/student-demographics/custom-values');
+  }
+
+  async updateStudentDemographicCustomValues(accountId, values) {
+    return this._request('PUT', `/admin/student-demographics/custom-values/${encodeURIComponent(accountId)}`, { values });
+  }
+
+  async getMyStudentDemographicFields() {
+    return this._request('GET', '/student-demographics/profile-fields');
+  }
+
+  async updateMyStudentDemographicFields(values) {
+    return this._request('PUT', '/student-demographics/profile-fields', { values });
+  }
+
   async createUser(userData) {
     return await this._request('POST', '/admin/users', userData);
   }
 
   async updateUserRole(nim, updates) {
     return await this._request('PUT', `/admin/users/${nim}`, updates);
+  }
+
+  async updateAccountAccessBulk({ accountIds, clearanceLevel, capabilities = [], capabilityAction }) {
+    return this._request('PUT', '/admin/users/bulk-access', {
+      account_ids: accountIds,
+      ...(clearanceLevel === undefined ? {} : { clearance_level: clearanceLevel }),
+      ...(capabilities.length ? { capabilities, capability_action: capabilityAction } : {})
+    });
   }
 
   async setUserRole(nim, role) {
@@ -379,6 +429,70 @@ class PRTSApiClient {
 
   async getSiteConfig({ preview = false } = {}) {
     return this._request('GET', `/site/config${preview ? '?preview=draft' : ''}`);
+  }
+
+  async getSecurityNotice() {
+    return this._request('GET', '/security/notice');
+  }
+
+  async updateSecurityNotice(status, message = '') {
+    return this._request('PUT', '/security/notice', { status, message });
+  }
+
+  async getOfficialGovernanceDocuments() {
+    return this._request('GET', '/governance-documents/official');
+  }
+
+  async getGovernanceDocuments() {
+    return this._request('GET', '/governance-documents');
+  }
+
+  async uploadGovernanceDocumentImage(file) {
+    const formData = new FormData();
+    formData.append('asset', file);
+    try {
+      const response = await fetch(`${API_BASE}/governance-documents/images`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData
+      });
+      const data = await response.json().catch(() => ({}));
+      return response.ok
+        ? { ok: true, status: response.status, data }
+        : { ok: false, status: response.status, error: data.error || 'Gambar dokumen tidak dapat diunggah.' };
+    } catch (error) {
+      console.error('[PRTS API ERROR] POST /governance-documents/images:', error);
+      return { ok: false, status: 0, error: 'Koneksi unggah gambar dokumen gagal.' };
+    }
+  }
+
+  async getGovernanceDocumentVersion(id) {
+    return this._request('GET', `/governance-documents/versions/${encodeURIComponent(id)}`);
+  }
+
+  async createGovernanceDocumentDraft(title, changeNote = '') {
+    return this._request('POST', '/governance-documents/drafts', { title, change_note: changeNote });
+  }
+
+  async saveGovernanceDocumentDraft(id, documents, expectedRevisionId, changeNote = '') {
+    return this._request('PUT', `/governance-documents/drafts/${encodeURIComponent(id)}`, {
+      documents,
+      expected_revision_id: expectedRevisionId,
+      change_note: changeNote
+    });
+  }
+
+  async ratifyGovernanceDocumentDraft(id, expectedRevisionId, ratificationNote) {
+    return this._request('POST', `/governance-documents/drafts/${encodeURIComponent(id)}/ratify`, {
+      expected_revision_id: expectedRevisionId,
+      ratification_note: ratificationNote
+    });
+  }
+
+  async withdrawGovernanceDocumentDraft(id, expectedRevisionId) {
+    return this._request('POST', `/governance-documents/drafts/${encodeURIComponent(id)}/withdraw`, {
+      expected_revision_id: expectedRevisionId
+    });
   }
 
   async getSoundtracks() {
@@ -658,6 +772,128 @@ class PRTSApiClient {
     return this._request('GET', '/academic/learning-paths');
   }
 
+  async getMyLearningEnrollments() {
+    return this._request('GET', '/learning/enrollments/mine');
+  }
+
+  async getMyMeetings() {
+    return this._request('GET', '/meetings/mine');
+  }
+
+  async getMeetingCapabilities() {
+    return this._request('GET', '/meetings/capabilities');
+  }
+
+  async getMeeting(id) {
+    return this._request('GET', `/meetings/${encodeURIComponent(id)}`);
+  }
+
+  async getMeetingVideoStatus(id) {
+    return this._request('GET', `/meetings/${encodeURIComponent(id)}/video/status`);
+  }
+
+  async getMeetingVideoToken(id) {
+    return this._request('POST', `/meetings/${encodeURIComponent(id)}/video/token`, {});
+  }
+
+  async startMeetingRecording(id, noticeConfirmed) {
+    return this._request('POST', `/meetings/${encodeURIComponent(id)}/recording/start`, {
+      notice_confirmed: noticeConfirmed
+    });
+  }
+
+  async stopMeetingRecording(id) {
+    return this._request('POST', `/meetings/${encodeURIComponent(id)}/recording/stop`, {});
+  }
+
+  async createMeeting(meeting) {
+    return this._request('POST', '/meetings', meeting);
+  }
+
+  async respondToMeeting(id, response) {
+    return this._request('PUT', `/meetings/${encodeURIComponent(id)}/rsvp`, { response });
+  }
+
+  async rescheduleMeeting(id, startsAt, endsAt) {
+    return this._request('PUT', `/meetings/${encodeURIComponent(id)}/schedule`, { starts_at: startsAt, ends_at: endsAt });
+  }
+
+  async cancelMeeting(id, scope = 'occurrence') {
+    return this._request('DELETE', `/meetings/${encodeURIComponent(id)}`, { scope });
+  }
+
+  async saveMeetingMinutes(id, minutes, decisions) {
+    return this._request('PUT', `/meetings/${encodeURIComponent(id)}/minutes`, { minutes, decisions });
+  }
+
+  async markMeetingAttendance(id, accountId, response) {
+    return this._request('PUT', `/meetings/${encodeURIComponent(id)}/attendance`, { account_id: accountId, response });
+  }
+
+  async createMeetingAction(id, action) {
+    return this._request('POST', `/meetings/${encodeURIComponent(id)}/actions`, action);
+  }
+
+  async updateMeetingAction(id, actionId, status) {
+    return this._request('PUT', `/meetings/${encodeURIComponent(id)}/actions/${encodeURIComponent(actionId)}`, { status });
+  }
+
+  async addMeetingDocument(id, document) {
+    return this._request('POST', `/meetings/${encodeURIComponent(id)}/documents`, document);
+  }
+
+  async uploadMeetingDocument(id, title, file) {
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('file', file);
+    try {
+      const response = await fetch(`${API_BASE}/meetings/${encodeURIComponent(id)}/documents/upload`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return { ok: false, status: response.status, error: data.error || 'Dokumen rapat gagal diunggah.' };
+      return { ok: true, status: response.status, data };
+    } catch (error) {
+      console.error('[PRTS API ERROR] POST meeting document upload:', error);
+      this.onConnectionChange?.(false, 'Koneksi ke PRTS Server gagal. Pastikan backend aktif.');
+      return { ok: false, status: 0, error: 'Koneksi ke PRTS Server gagal.' };
+    }
+  }
+
+  async enrollInLearningPath(id) {
+    return this._request('POST', `/learning/paths/${encodeURIComponent(id)}/enroll`, {});
+  }
+
+  async completeLearningMilestone(id, milestoneId) {
+    return this._request('PUT', `/learning/paths/${encodeURIComponent(id)}/milestones/${encodeURIComponent(milestoneId)}/complete`, {});
+  }
+
+  async getSupportTickets() {
+    return this._request('GET', '/support/tickets');
+  }
+
+  async getSupportTicket(id) {
+    return this._request('GET', `/support/tickets/${encodeURIComponent(id)}`);
+  }
+
+  async createSupportTicket(ticket) {
+    return this._request('POST', '/support/tickets', ticket);
+  }
+
+  async replyToSupportTicket(id, message) {
+    return this._request('POST', `/support/tickets/${encodeURIComponent(id)}/messages`, { message });
+  }
+
+  async updateSupportTicketStatus(id, status) {
+    return this._request('PUT', `/support/tickets/${encodeURIComponent(id)}/status`, { status });
+  }
+
+  async getSupportReports() {
+    return this._request('GET', '/support/reports');
+  }
+
   async getMyAcademicLearningPaths() {
     return this._request('GET', '/academic/learning-paths/mine');
   }
@@ -829,7 +1065,7 @@ class PRTSApiClient {
     return await this._request('POST', '/delegations/' + id + '/lpd', data);
   }
 
-    async getPublicRdpAgendas() {
+  async getPublicRdpAgendas() {
     return await this._request('GET', '/aspirations/rdp-agendas');
   }
 

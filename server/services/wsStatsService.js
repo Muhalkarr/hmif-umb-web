@@ -32,6 +32,7 @@ export const createWsStatsService = (httpServer, db) => {
   const userSockets = new Map();
   // Set semua socket aktif untuk broadcast
   const allSockets = new Set();
+  let closed = false;
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const getOnlineCount = () => allSockets.size;
@@ -181,6 +182,8 @@ export const createWsStatsService = (httpServer, db) => {
   });
 
   const close = () => {
+    if (closed) return;
+    closed = true;
     clearInterval(statsInterval);
     for (const ws of allSockets) {
       try { ws.close(); } catch {}
